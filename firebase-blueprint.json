@@ -1,0 +1,89 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "createdAt": { "type": "number", "description": "Timestamp" }
+      },
+      "required": ["email", "createdAt"]
+    },
+    "Log": {
+      "title": "Daily Log",
+      "description": "A daily safety manager log",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+        "workerStaff": { "type": "number" },
+        "workerLaborer": { "type": "number" },
+        "tasks": { "type": "string" },
+        "education": { "type": "string" },
+        "others": { "type": "string" },
+        "checklistData": { "type": "string" },
+        "relatedPhotosData": { "type": "string" },
+        "hazardsText": { "type": "string" },
+        "actionsText": { "type": "string" },
+        "aiSummary": { "type": "string" },
+        "managerSignature": { "type": "string" },
+        "directorSignature": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["ownerId", "date", "workerStaff", "workerLaborer", "tasks", "createdAt", "updatedAt"]
+    },
+    "Observation": {
+      "title": "Observation",
+      "description": "Issue and action identified during patrol",
+      "type": "object",
+      "properties": {
+        "issue": { "type": "string" },
+        "action": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "completed"] },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["issue", "action", "status", "createdAt", "updatedAt"]
+    },
+    "Photo": {
+      "title": "Photo Record",
+      "description": "Photo of site condition",
+      "type": "object",
+      "properties": {
+        "imageUrl": { "type": "string" },
+        "location": { "type": "string" },
+        "description": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["imageUrl", "location", "description", "createdAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "Alert for safety hazards or reminders",
+      "type": "object",
+      "properties": {
+        "message": { "type": "string" },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["message", "isRead", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles"
+    },
+    "/users/{userId}/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/Notification" },
+      "description": "User notifications"
+    },
+    "/logs/{logId}": {
+      "schema": { "$ref": "#/entities/Log" },
+      "description": "Daily logs"
+    }
+  }
+}

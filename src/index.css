@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+@variant dark (&:is(.dark *));
+@variant hc (&:is(.theme-hc *));
+
+@media print {
+  html, body {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
+
+@layer utilities {
+
+  .writing-vertical-rl {
+    writing-mode: vertical-rl;
+  }
+  
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  
+  .break-keep {
+    word-break: keep-all;
+    overflow-wrap: break-word;
+  }
+}
+
+.styled-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.styled-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.styled-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.styled-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
