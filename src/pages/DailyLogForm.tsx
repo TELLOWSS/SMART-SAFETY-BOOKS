@@ -464,7 +464,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
             </div>
           </div>
         </div>
-      )}}
+      )}
 
       {/* Print Configuration Panel */}
       <div className="bg-white p-4 border border-neutral-200 shadow-sm rounded-lg mb-6 print:hidden">
