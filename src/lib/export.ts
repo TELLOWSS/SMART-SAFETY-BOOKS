@@ -22,30 +22,66 @@ async function waitForRenderAssets(element: HTMLElement) {
   }
 }
 
+function cleanOklchColors(html: string): string {
+  return html.replace(/oklch\([^)]*\)/g, '#000000');
+}
+
+function prepareCloneForCapture(clone: HTMLElement): void {
+  const allElements = [clone, ...Array.from(clone.querySelectorAll('*'))] as HTMLElement[];
+  
+  allElements.forEach(el => {
+    const style = el.getAttribute('style') || '';
+    if (style.includes('oklch')) {
+      const cleanedStyle = cleanOklchColors(style);
+      el.setAttribute('style', cleanedStyle);
+    }
+    
+    try {
+      const computed = window.getComputedStyle(el);
+      const color = computed.color;
+      const bg = computed.backgroundColor;
+      
+      if (color && color.toLowerCase() !== 'rgba(0, 0, 0, 0)') {
+        el.style.color = color;
+      }
+      if (bg && bg.toLowerCase() !== 'rgba(0, 0, 0, 0)') {
+        el.style.backgroundColor = bg;
+      }
+    } catch (e) {
+      // Ignore errors from computed style
+    }
+  });
+}
+
 export async function captureElement(element: HTMLElement) {
   await waitForRenderAssets(element);
+  
+  const clone = element.cloneNode(true) as HTMLElement;
+  prepareCloneForCapture(clone);
+  
+  document.body.appendChild(clone);
+  clone.style.position = 'fixed';
+  clone.style.left = '-9999px';
+  clone.style.top = '-9999px';
+  
   try {
-    return await html2canvas(element, {
+    return await html2canvas(clone, {
       scale: 2,
       useCORS: true,
       allowTaint: true,
       backgroundColor: '#ffffff',
       logging: false,
-      windowHeight: element.scrollHeight,
-      windowWidth: element.scrollWidth,
-      onclone: (clonedDocument) => {
-        const clonedElement = clonedDocument.body.firstChild as HTMLElement;
-        if (clonedElement) {
-          clonedElement.style.margin = '0';
-          clonedElement.style.padding = '0';
-        }
-      }
+      windowHeight: clone.scrollHeight,
+      windowWidth: clone.scrollWidth
     });
   } catch (error) {
     console.error('html2canvas error:', error);
     throw new Error(`화면 캡처 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
+  } finally {
+    document.body.removeChild(clone);
   }
 }
+
 
 export function downloadDataUrl(dataUrl: string, fileName: string) {
   const link = document.createElement('a');
