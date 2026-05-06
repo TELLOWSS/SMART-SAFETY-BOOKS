@@ -26,8 +26,9 @@ export default function PrintLogs() {
     try {
       await exportElementsToPdf(targets, 'daily-logs');
     } catch (error) {
-      console.error(error);
-      alert('PDF 저장 중 오류가 발생했습니다.');
+      console.error('일괄 PDF 저장 오류:', error);
+      const message = error instanceof Error ? error.message : '알 수 없는 오류';
+      alert(`PDF 저장 실패: ${message}`);
     } finally {
       setIsExportingPdf(false);
     }
@@ -44,8 +45,9 @@ export default function PrintLogs() {
     try {
       await exportElementsToPng(targets, 'daily-log');
     } catch (error) {
-      console.error(error);
-      alert('이미지 저장 중 오류가 발생했습니다.');
+      console.error('일괄 이미지 저장 오류:', error);
+      const message = error instanceof Error ? error.message : '알 수 없는 오류';
+      alert(`이미지 저장 실패: ${message}`);
     } finally {
       setIsExportingImage(false);
     }

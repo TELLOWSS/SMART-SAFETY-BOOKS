@@ -281,8 +281,9 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
     try {
       await exportElementsToPdf([exportRef.current], 'daily-log');
     } catch (error) {
-      console.error(error);
-      alert('PDF 저장 중 오류가 발생했습니다.');
+      console.error('PDF 저장 오류:', error);
+      const message = error instanceof Error ? error.message : '알 수 없는 오류';
+      alert(`PDF 저장 실패: ${message}`);
     } finally {
       setIsExportingPdf(false);
     }
@@ -298,8 +299,9 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
     try {
       await exportElementsToPng([exportRef.current], 'daily-log');
     } catch (error) {
-      console.error(error);
-      alert('이미지 저장 중 오류가 발생했습니다.');
+      console.error('이미지 저장 오류:', error);
+      const message = error instanceof Error ? error.message : '알 수 없는 오류';
+      alert(`이미지 저장 실패: ${message}`);
     } finally {
       setIsExportingImage(false);
     }
