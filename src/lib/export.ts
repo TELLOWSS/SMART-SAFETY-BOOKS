@@ -1,4 +1,4 @@
-import html2canvas from 'html2canvas';
+import domtoimage from 'dom-to-image';
 import jsPDF from 'jspdf';
 
 async function waitForRenderAssets(element: HTMLElement) {
@@ -22,124 +22,38 @@ async function waitForRenderAssets(element: HTMLElement) {
   }
 }
 
-function prepareCloneForCapture(clone: HTMLElement): void {
-  const colorProperties = [
-    'color',
-    'backgroundColor',
-    'borderColor',
-    'borderTopColor',
-    'borderRightColor',
-    'borderBottomColor',
-    'borderLeftColor',
-    'outlineColor',
-    'textDecorationColor',
-    'caretColor'
-  ];
-
-  const allElements = [clone, ...Array.from(clone.querySelectorAll('*'))] as HTMLElement[];
-  
-  allElements.forEach(el => {
-    try {
-      const computed = window.getComputedStyle(el);
-      const inlineStyle = el.getAttribute('style') || '';
-      
-      // 첫째: 인라인 스타일에서 oklch 제거
-      let cleanedStyle = inlineStyle.replace(/oklch\([^)]*\)/g, '');
-      
-      // 둘째: computed style에서 색상 속성들을 명시적으로 설정
-      colorProperties.forEach(prop => {
-        try {
-          const value = computed.getPropertyValue(prop);
-          if (value && !value.includes('oklch')) {
-            if (!cleanedStyle.includes(`${prop}:`)) {
-              cleanedStyle += `; ${prop}: ${value}`;
-            }
-          }
-        } catch (e) {
-          // Ignore
-        }
-      });
-      
-      // 셋째: border 스타일도 명시적으로 설정
-      const borderStyle = computed.borderStyle;
-      const borderWidth = computed.borderWidth;
-      if (borderStyle && borderWidth) {
-        cleanedStyle += `; border-style: ${borderStyle}; border-width: ${borderWidth}`;
-      }
-      
-      el.setAttribute('style', cleanedStyle);
-      
-      // 넷째: 스타일 태그에서도 oklch 제거
-      if (el.tagName === 'STYLE' && el.textContent) {
-        el.textContent = el.textContent.replace(/oklch\([^)]*\)/g, '#000000');
-      }
-    } catch (e) {
-      console.warn('Style processing error for element:', e);
-    }
-  });
-}
-
-export async function captureElement(element: HTMLElement) {
+export async function captureElement(element: HTMLElement): Promise<HTMLCanvasElement> {
   await waitForRenderAssets(element);
   
-  const clone = element.cloneNode(true) as HTMLElement;
-  
-  document.body.appendChild(clone);
-  clone.style.position = 'fixed';
-  clone.style.left = '-9999px';
-  clone.style.top = '-9999px';
-  
-  // 임시 스타일 시트 생성: oklch 색상에 fallback 제공
-  const tempStyle = document.createElement('style');
-  tempStyle.textContent = `
-    * {
-      color: inherits !important;
-      background-color: inherit !important;
-      border-color: #000 !important;
-      box-shadow: none !important;
-    }
-  `;
-  clone.appendChild(tempStyle);
-  
-  // 모든 style 태그에서 oklch 제거
-  const styleElements = [
-    ...document.querySelectorAll('style'),
-    ...clone.querySelectorAll('style')
-  ];
-  
-  const originalContents = new Map<HTMLStyleElement, string>();
-  styleElements.forEach(el => {
-    if (el.textContent) {
-      originalContents.set(el, el.textContent);
-      el.textContent = el.textContent.replace(/oklch\([^)]*\)/g, '#000000');
-    }
-  });
-  
-  prepareCloneForCapture(clone);
-  
   try {
-    return await html2canvas(clone, {
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: '#ffffff',
-      logging: false,
-      windowHeight: clone.scrollHeight,
-      windowWidth: clone.scrollWidth
+    const dataUrl = await domtoimage.toPng(element, {
+      cacheBust: true,
+      pixelRatio: 2,
+      quality: 0.95
+    });
+
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+          resolve(canvas);
+        } else {
+          reject(new Error('Canvas context를 생성할 수 없습니다'));
+        }
+      };
+      img.onerror = () => reject(new Error('이미지 로드 실패'));
+      img.src = dataUrl;
     });
   } catch (error) {
-    // 원본 복구
-    originalContents.forEach((content, el) => {
-      el.textContent = content;
-    });
-    console.error('html2canvas error:', error);
+    console.error('dom-to-image error:', error);
     throw new Error(`화면 캡처 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
-  } finally {
-    // 원본 복구
-    originalContents.forEach((content, el) => {
-      el.textContent = content;
-    });
-    document.body.removeChild(clone);
   }
 }
 
@@ -209,9 +123,14 @@ export async function exportElementsToPng(elements: HTMLElement[], fileNamePrefi
   const now = new Date().toISOString().slice(0, 10);
   for (let index = 0; index < elements.length; index += 1) {
     try {
-      const canvas = await captureElement(elements[index]);
+      await waitForRenderAssets(elements[index]);
+      const dataUrl = await domtoimage.toPng(elements[index], {
+        cacheBust: true,
+        pixelRatio: 2,
+        quality: 0.95
+      });
       const fileName = `${fileNamePrefix}-${index + 1}-${now}.png`;
-      downloadDataUrl(canvas.toDataURL('image/png'), fileName);
+      downloadDataUrl(dataUrl, fileName);
     } catch (error) {
       console.error(`PNG export error for element ${index + 1}:`, error);
       throw new Error(`${index + 1}번 일지 이미지 캡처 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
