@@ -3,47 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import DailyLogForm from './DailyLogForm';
 import { Printer, ArrowLeft, FileDown, ImageDown, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
-
-async function waitForRenderAssets(element: HTMLElement) {
-  const images = Array.from(element.querySelectorAll('img'));
-  await Promise.all(
-    images.map(
-      image =>
-        new Promise<void>(resolve => {
-          if (image.complete) {
-            resolve();
-            return;
-          }
-          image.onload = () => resolve();
-          image.onerror = () => resolve();
-        })
-    )
-  );
-
-  if ((document as any).fonts?.ready) {
-    await (document as any).fonts.ready;
-  }
-}
-
-async function captureElement(element: HTMLElement) {
-  await waitForRenderAssets(element);
-  return html2canvas(element, {
-    scale: 2,
-    useCORS: true,
-    backgroundColor: '#ffffff'
-  });
-}
-
-function downloadDataUrl(dataUrl: string, fileName: string) {
-  const link = document.createElement('a');
-  link.href = dataUrl;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-}
+import { exportElementsToPdf, exportElementsToPng } from '../lib/export';
 
 export default function PrintLogs() {
   const [searchParams] = useSearchParams();
@@ -64,40 +24,7 @@ export default function PrintLogs() {
 
     setIsExportingPdf(true);
     try {
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      let hasPage = false;
-
-      for (const target of targets) {
-        const canvas = await captureElement(target);
-        const sliceCanvas = document.createElement('canvas');
-        const sliceContext = sliceCanvas.getContext('2d');
-        if (!sliceContext) {
-          continue;
-        }
-
-        const pagePixelHeight = Math.floor((canvas.width * pageHeight) / pageWidth);
-        for (let y = 0; y < canvas.height; y += pagePixelHeight) {
-          const sliceHeight = Math.min(pagePixelHeight, canvas.height - y);
-          sliceCanvas.width = canvas.width;
-          sliceCanvas.height = sliceHeight;
-          sliceContext.clearRect(0, 0, sliceCanvas.width, sliceCanvas.height);
-          sliceContext.drawImage(canvas, 0, y, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
-
-          if (hasPage) {
-            pdf.addPage();
-          }
-
-          const imageData = sliceCanvas.toDataURL('image/png');
-          const renderedHeight = (sliceHeight * pageWidth) / canvas.width;
-          pdf.addImage(imageData, 'PNG', 0, 0, pageWidth, renderedHeight, undefined, 'FAST');
-          hasPage = true;
-        }
-      }
-
-      const now = new Date().toISOString().slice(0, 10);
-      pdf.save(`daily-logs-${now}.pdf`);
+      await exportElementsToPdf(targets, 'daily-logs');
     } catch (error) {
       console.error(error);
       alert('PDF 저장 중 오류가 발생했습니다.');
@@ -115,12 +42,7 @@ export default function PrintLogs() {
 
     setIsExportingImage(true);
     try {
-      const now = new Date().toISOString().slice(0, 10);
-      for (let index = 0; index < targets.length; index += 1) {
-        const canvas = await captureElement(targets[index]);
-        const fileName = `daily-log-${index + 1}-${now}.png`;
-        downloadDataUrl(canvas.toDataURL('image/png'), fileName);
-      }
+      await exportElementsToPng(targets, 'daily-log');
     } catch (error) {
       console.error(error);
       alert('이미지 저장 중 오류가 발생했습니다.');

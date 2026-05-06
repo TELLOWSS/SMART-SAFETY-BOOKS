@@ -4,10 +4,11 @@ import { doc, getDoc, setDoc, updateDoc, serverTimestamp, collection } from 'fir
 import { db, auth, handleFirestoreError } from '../lib/auth';
 import { DailyLog, ChecklistData, RelatedPhoto } from '../lib/types';
 import { MUST_DO_GUIDELINES, FIVE_PROHIBITIONS, HIGH_RISK_ASSESSMENTS, PTW_INSPECTION } from '../lib/checklistTypes';
-import { ArrowLeft, Save, Sparkles, Loader2, Camera, Plus, Trash2, Printer } from 'lucide-react';
+import { ArrowLeft, Save, Sparkles, Loader2, Camera, Plus, Trash2, Printer, FileDown, ImageDown } from 'lucide-react';
 import { format } from 'date-fns';
 
 import { triggerHaptic } from '../lib/haptic';
+import { exportElementsToPdf, exportElementsToPng } from '../lib/export';
 
 function captureAndCompressImage(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -50,6 +51,9 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [summarizing, setSummarizing] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isExportingImage, setIsExportingImage] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
 
   const [highRiskItems, setHighRiskItems] = useState(HIGH_RISK_ASSESSMENTS);
 
@@ -267,6 +271,40 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
     setRelatedPhotos(prev => prev.filter(p => p.id !== id));
   };
 
+  const handleExportPdf = async () => {
+    if (!exportRef.current) {
+      alert('저장할 문서 영역을 찾지 못했습니다.');
+      return;
+    }
+
+    setIsExportingPdf(true);
+    try {
+      await exportElementsToPdf([exportRef.current], 'daily-log');
+    } catch (error) {
+      console.error(error);
+      alert('PDF 저장 중 오류가 발생했습니다.');
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
+  const handleExportImage = async () => {
+    if (!exportRef.current) {
+      alert('저장할 문서 영역을 찾지 못했습니다.');
+      return;
+    }
+
+    setIsExportingImage(true);
+    try {
+      await exportElementsToPng([exportRef.current], 'daily-log');
+    } catch (error) {
+      console.error(error);
+      alert('이미지 저장 중 오류가 발생했습니다.');
+    } finally {
+      setIsExportingImage(false);
+    }
+  };
+
   const renderChecklistGroup = (title: string, items: any[], firstColTitle: string, secondColTitle: string) => {
     const isHidden = hiddenSections[title];
     return (
@@ -442,12 +480,28 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
             <ArrowLeft className="w-4 h-4 mr-1" /> 목록으로
           </button>
           <div className="space-x-2">
+            <button
+              onClick={handleExportImage}
+              disabled={isExportingImage || isExportingPdf}
+              className="inline-flex items-center px-4 py-2 bg-white border border-neutral-300 text-neutral-700 rounded-md font-medium text-sm hover:bg-neutral-50 disabled:opacity-50"
+            >
+              {isExportingImage ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <ImageDown className="w-4 h-4 mr-1.5" />}
+              이미지 저장
+            </button>
+            <button
+              onClick={handleExportPdf}
+              disabled={isExportingPdf || isExportingImage}
+              className="inline-flex items-center px-4 py-2 bg-neutral-700 text-white rounded-md font-medium text-sm hover:bg-neutral-800 disabled:opacity-50"
+            >
+              {isExportingPdf ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <FileDown className="w-4 h-4 mr-1.5" />}
+              PDF 저장
+            </button>
             <button 
               onClick={() => window.print()}
               className="inline-flex items-center px-4 py-2 bg-white border border-neutral-300 text-neutral-700 rounded-md font-medium text-sm hover:bg-neutral-50"
             >
               <Printer className="w-4 h-4 mr-1.5" />
-              PDF/인쇄
+              인쇄
             </button>
             <button 
               onClick={handleSave} 
@@ -493,7 +547,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
         <div className="sm:hidden mb-2 flex items-center justify-center text-xs text-blue-600 bg-blue-50 py-1.5 rounded-md font-medium">
           <ArrowLeft className="w-3 h-3 mr-1 inline-block" /> 좌우로 스와이프하여 양식 작성 <ArrowLeft className="w-3 h-3 ml-1 inline-block rotate-180" />
         </div>
-        <div className="bg-white mx-auto print:shadow-none print:border-0 rounded-none sm:rounded-lg overflow-hidden print:overflow-visible text-neutral-900 border-2 border-black min-w-[800px] w-full break-keep shadow-sm relative group" style={{ fontFamily: 'serif', wordBreak: 'keep-all' }}>
+        <div ref={exportRef} data-export-log="true" className="bg-white mx-auto print:shadow-none print:border-0 rounded-none sm:rounded-lg overflow-hidden print:overflow-visible text-neutral-900 border-2 border-black min-w-[800px] w-full break-keep shadow-sm relative group" style={{ fontFamily: 'serif', wordBreak: 'keep-all' }}>
         
         {/* Title & Signatures block */}
         <div className="flex justify-between items-stretch border-b-2 border-black">
