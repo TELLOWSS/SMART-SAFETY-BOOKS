@@ -1,4 +1,4 @@
-import domtoimage from 'dom-to-image';
+import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
 async function waitForRenderAssets(element: HTMLElement) {
@@ -26,36 +26,24 @@ export async function captureElement(element: HTMLElement): Promise<HTMLCanvasEl
   await waitForRenderAssets(element);
   
   try {
-    const dataUrl = await domtoimage.toPng(element, {
-      cacheBust: true,
-      pixelRatio: 2,
-      quality: 0.95
-    });
-
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.fillStyle = '#ffffff';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(img, 0, 0);
-          resolve(canvas);
-        } else {
-          reject(new Error('Canvas context를 생성할 수 없습니다'));
-        }
-      };
-      img.onerror = () => reject(new Error('이미지 로드 실패'));
-      img.src = dataUrl;
+    return await html2canvas(element, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#ffffff',
+      logging: false,
+      windowHeight: element.scrollHeight,
+      windowWidth: element.scrollWidth,
+      ignoreElements: (el) => {
+        return el.tagName === 'SCRIPT' || el.tagName === 'STYLE' && el.textContent?.includes('oklch');
+      }
     });
   } catch (error) {
-    console.error('dom-to-image error:', error);
+    console.error('html2canvas error:', error);
     throw new Error(`화면 캡처 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
   }
 }
+
 
 
 export function downloadDataUrl(dataUrl: string, fileName: string) {
@@ -123,14 +111,9 @@ export async function exportElementsToPng(elements: HTMLElement[], fileNamePrefi
   const now = new Date().toISOString().slice(0, 10);
   for (let index = 0; index < elements.length; index += 1) {
     try {
-      await waitForRenderAssets(elements[index]);
-      const dataUrl = await domtoimage.toPng(elements[index], {
-        cacheBust: true,
-        pixelRatio: 2,
-        quality: 0.95
-      });
+      const canvas = await captureElement(elements[index]);
       const fileName = `${fileNamePrefix}-${index + 1}-${now}.png`;
-      downloadDataUrl(dataUrl, fileName);
+      downloadDataUrl(canvas.toDataURL('image/png'), fileName);
     } catch (error) {
       console.error(`PNG export error for element ${index + 1}:`, error);
       throw new Error(`${index + 1}번 일지 이미지 캡처 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
