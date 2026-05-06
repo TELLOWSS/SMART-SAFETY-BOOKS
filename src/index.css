@@ -9,8 +9,7 @@
     print-color-adjust: exact !important;
   }
 
-  [data-export-log='true'],
-  [data-export-log='true'] * {
+  * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
     border-color: #000 !important;
@@ -18,23 +17,23 @@
     box-shadow: none !important;
   }
 
-  [data-export-log='true'] .border,
-  [data-export-log='true'] .border-b,
-  [data-export-log='true'] .border-t,
-  [data-export-log='true'] .border-l,
-  [data-export-log='true'] .border-r {
+  .border,
+  .border-b,
+  .border-t,
+  .border-l,
+  .border-r {
     border-width: 1.2px !important;
   }
 
-  [data-export-log='true'] .border-2,
-  [data-export-log='true'] .border-b-2,
-  [data-export-log='true'] .border-t-2,
-  [data-export-log='true'] .border-l-2,
-  [data-export-log='true'] .border-r-2 {
+  .border-2,
+  .border-b-2,
+  .border-t-2,
+  .border-l-2,
+  .border-r-2 {
     border-width: 2.2px !important;
   }
 
-  [data-export-log='true'] .border-double {
+  .border-double {
     border-width: 3px !important;
   }
 }
