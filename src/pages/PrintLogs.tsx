@@ -16,19 +16,24 @@ export default function PrintLogs() {
 
   return (
     <div className="bg-neutral-100 min-h-screen">
-      <div className="max-w-5xl mx-auto p-4 print:hidden sticky top-0 z-50 bg-neutral-100 border-b border-neutral-200 mb-8 flex justify-between items-center shadow-sm">
-        <button onClick={() => navigate(-1)} className="text-neutral-500 hover:text-neutral-900 flex items-center font-medium">
-          <ArrowLeft className="w-5 h-5 mr-1" /> 돌아가기
-        </button>
-        <div className="flex items-center space-x-4">
-          <span className="text-neutral-600 font-medium">{ids.length}개의 일지 렌더링됨</span>
-          <button 
-             onClick={() => window.print()}
-             className="inline-flex items-center px-5 py-2 bg-neutral-900 text-white rounded-md font-medium hover:bg-black shadow"
-          >
-             <Printer className="w-4 h-4 mr-2" />
-             PDF/이미지 저장
+      <div className="max-w-5xl mx-auto p-4 print:hidden sticky top-0 z-50 bg-neutral-100 border-b border-neutral-200 mb-8 flex flex-col gap-3 shadow-sm">
+        <div className="flex justify-between items-center">
+          <button onClick={() => navigate(-1)} className="text-neutral-500 hover:text-neutral-900 flex items-center font-medium">
+            <ArrowLeft className="w-5 h-5 mr-1" /> 돌아가기
           </button>
+          <div className="flex items-center space-x-4">
+            <span className="text-neutral-600 font-medium">{ids.length}개의 일지 렌더링됨</span>
+            <button 
+               onClick={() => window.print()}
+               className="inline-flex items-center px-5 py-2 bg-neutral-900 text-white rounded-md font-medium hover:bg-black shadow"
+            >
+               <Printer className="w-4 h-4 mr-2" />
+               PDF/이미지 저장
+            </button>
+          </div>
+        </div>
+        <div className="text-xs text-neutral-500 ml-auto">
+          💡 <strong>품질 최적화:</strong> 버튼 클릭 후 "PDF로 저장" 또는 "인쇄 미리보기"에서 스크린샷 사용
         </div>
       </div>
 

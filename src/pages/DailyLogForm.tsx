@@ -441,25 +441,30 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
           <button onClick={() => navigate('/logs')} className="text-neutral-500 hover:text-neutral-900 flex items-center text-sm font-medium">
             <ArrowLeft className="w-4 h-4 mr-1" /> 목록으로
           </button>
-          <div className="space-x-2">
-            <button 
-              onClick={() => window.print()}
-              className="inline-flex items-center px-4 py-2 bg-white border border-neutral-300 text-neutral-700 rounded-md font-medium text-sm hover:bg-neutral-50"
-            >
-              <Printer className="w-4 h-4 mr-1.5" />
-              PDF/이미지 저장
-            </button>
-            <button 
-              onClick={handleSave} 
-              disabled={loading}
-              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md font-medium text-sm hover:bg-blue-700 disabled:opacity-50"
-            >
-              {loading ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Save className="w-4 h-4 mr-1.5" />}
-              저장하기
-            </button>
+          <div className="flex flex-col items-end gap-3">
+            <div className="text-xs text-neutral-500 text-right">
+              💡 <strong>PDF/이미지 저장:</strong> "PDF 저장하기" 버튼 → 브라우저 인쇄 → "PDF로 저장" 또는 스크린샷 사용
+            </div>
+            <div className="space-x-2">
+              <button 
+                onClick={() => window.print()}
+                className="inline-flex items-center px-4 py-2 bg-white border border-neutral-300 text-neutral-700 rounded-md font-medium text-sm hover:bg-neutral-50"
+              >
+                <Printer className="w-4 h-4 mr-1.5" />
+                PDF 저장하기
+              </button>
+              <button 
+                onClick={handleSave} 
+                disabled={loading}
+                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md font-medium text-sm hover:bg-blue-700 disabled:opacity-50"
+              >
+                {loading ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Save className="w-4 h-4 mr-1.5" />}
+                저장하기
+              </button>
+            </div>
           </div>
         </div>
-      )}
+      )}}
 
       {/* Print Configuration Panel */}
       <div className="bg-white p-4 border border-neutral-200 shadow-sm rounded-lg mb-6 print:hidden">
