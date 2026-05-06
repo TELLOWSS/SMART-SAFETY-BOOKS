@@ -22,33 +22,59 @@ async function waitForRenderAssets(element: HTMLElement) {
   }
 }
 
-function cleanOklchColors(html: string): string {
-  return html.replace(/oklch\([^)]*\)/g, '#000000');
-}
-
 function prepareCloneForCapture(clone: HTMLElement): void {
+  const colorProperties = [
+    'color',
+    'backgroundColor',
+    'borderColor',
+    'borderTopColor',
+    'borderRightColor',
+    'borderBottomColor',
+    'borderLeftColor',
+    'outlineColor',
+    'textDecorationColor',
+    'caretColor'
+  ];
+
   const allElements = [clone, ...Array.from(clone.querySelectorAll('*'))] as HTMLElement[];
   
   allElements.forEach(el => {
-    const style = el.getAttribute('style') || '';
-    if (style.includes('oklch')) {
-      const cleanedStyle = cleanOklchColors(style);
-      el.setAttribute('style', cleanedStyle);
-    }
-    
     try {
       const computed = window.getComputedStyle(el);
-      const color = computed.color;
-      const bg = computed.backgroundColor;
+      const inlineStyle = el.getAttribute('style') || '';
       
-      if (color && color.toLowerCase() !== 'rgba(0, 0, 0, 0)') {
-        el.style.color = color;
+      // 첫째: 인라인 스타일에서 oklch 제거
+      let cleanedStyle = inlineStyle.replace(/oklch\([^)]*\)/g, '');
+      
+      // 둘째: computed style에서 색상 속성들을 명시적으로 설정
+      colorProperties.forEach(prop => {
+        try {
+          const value = computed.getPropertyValue(prop);
+          if (value && !value.includes('oklch')) {
+            if (!cleanedStyle.includes(`${prop}:`)) {
+              cleanedStyle += `; ${prop}: ${value}`;
+            }
+          }
+        } catch (e) {
+          // Ignore
+        }
+      });
+      
+      // 셋째: border 스타일도 명시적으로 설정
+      const borderStyle = computed.borderStyle;
+      const borderWidth = computed.borderWidth;
+      if (borderStyle && borderWidth) {
+        cleanedStyle += `; border-style: ${borderStyle}; border-width: ${borderWidth}`;
       }
-      if (bg && bg.toLowerCase() !== 'rgba(0, 0, 0, 0)') {
-        el.style.backgroundColor = bg;
+      
+      el.setAttribute('style', cleanedStyle);
+      
+      // 넷째: 스타일 태그에서도 oklch 제거
+      if (el.tagName === 'STYLE' && el.textContent) {
+        el.textContent = el.textContent.replace(/oklch\([^)]*\)/g, '#000000');
       }
     } catch (e) {
-      // Ignore errors from computed style
+      console.warn('Style processing error for element:', e);
     }
   });
 }
@@ -57,12 +83,39 @@ export async function captureElement(element: HTMLElement) {
   await waitForRenderAssets(element);
   
   const clone = element.cloneNode(true) as HTMLElement;
-  prepareCloneForCapture(clone);
   
   document.body.appendChild(clone);
   clone.style.position = 'fixed';
   clone.style.left = '-9999px';
   clone.style.top = '-9999px';
+  
+  // 임시 스타일 시트 생성: oklch 색상에 fallback 제공
+  const tempStyle = document.createElement('style');
+  tempStyle.textContent = `
+    * {
+      color: inherits !important;
+      background-color: inherit !important;
+      border-color: #000 !important;
+      box-shadow: none !important;
+    }
+  `;
+  clone.appendChild(tempStyle);
+  
+  // 모든 style 태그에서 oklch 제거
+  const styleElements = [
+    ...document.querySelectorAll('style'),
+    ...clone.querySelectorAll('style')
+  ];
+  
+  const originalContents = new Map<HTMLStyleElement, string>();
+  styleElements.forEach(el => {
+    if (el.textContent) {
+      originalContents.set(el, el.textContent);
+      el.textContent = el.textContent.replace(/oklch\([^)]*\)/g, '#000000');
+    }
+  });
+  
+  prepareCloneForCapture(clone);
   
   try {
     return await html2canvas(clone, {
@@ -75,9 +128,17 @@ export async function captureElement(element: HTMLElement) {
       windowWidth: clone.scrollWidth
     });
   } catch (error) {
+    // 원본 복구
+    originalContents.forEach((content, el) => {
+      el.textContent = content;
+    });
     console.error('html2canvas error:', error);
     throw new Error(`화면 캡처 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
   } finally {
+    // 원본 복구
+    originalContents.forEach((content, el) => {
+      el.textContent = content;
+    });
     document.body.removeChild(clone);
   }
 }
