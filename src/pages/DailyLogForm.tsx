@@ -4,7 +4,7 @@ import { doc, getDoc, setDoc, updateDoc, serverTimestamp, collection } from 'fir
 import { db, auth, handleFirestoreError } from '../lib/auth';
 import { DailyLog, ChecklistData, RelatedPhoto } from '../lib/types';
 import { MUST_DO_GUIDELINES, FIVE_PROHIBITIONS, HIGH_RISK_ASSESSMENTS, PTW_INSPECTION } from '../lib/checklistTypes';
-import { ArrowLeft, Save, Sparkles, Loader2, Camera, Plus, Trash2, Printer } from 'lucide-react';
+import { ArrowLeft, Save, Sparkles, Loader2, Camera, Plus, Trash2, Printer, ChevronDown, ChevronUp, CheckCircle2, XCircle, MinusCircle } from 'lucide-react';
 import { format } from 'date-fns';
 
 import { triggerHaptic } from '../lib/haptic';
@@ -71,6 +71,9 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
   const [managerSignature, setManagerSignature] = useState('');
   const [directorSignature, setDirectorSignature] = useState('');
   const [hiddenSections, setHiddenSections] = useState<Record<string, boolean>>({});
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(
+    { '필수이행지침': true, '5대금지규정': true, '위험성평가 상등급 감소대책 이행여부': true, '중점위험작업(PTW) 점검': true }
+  );
 
   const generateSummary = async () => {
     if (!hazardsText && !actionsText) {
@@ -188,6 +191,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
         aiSummary,
         managerSignature,
         directorSignature,
+        hiddenSections,
       };
 
       if (id) {
@@ -494,7 +498,402 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
         </div>
       </div>
 
-      <div className="overflow-x-auto print:overflow-visible pb-6 -mx-4 sm:mx-0 px-4 sm:px-0 scrollbar-hide styled-scrollbar">
+      {/* ═══════════════════════════════════════
+          모바일 전용 카드 입력 UI (md 미만에서만 표시)
+          - 동일한 state/handler 사용 → 저장 데이터 구조 완전 동일
+          - 인쇄는 DailyLogPrintView가 담당하므로 인쇄 양식 변화 없음
+      ═══════════════════════════════════════ */}
+      <div className="md:hidden space-y-4 pb-24 print:hidden">
+
+        {/* 기본 정보 */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="bg-slate-50 px-4 py-3 border-b border-slate-100">
+            <h3 className="font-bold text-slate-800 text-sm">기본 정보</h3>
+          </div>
+          <div className="p-4 space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5">일 자</label>
+              <input
+                type="date"
+                value={date}
+                onChange={e => setDate(e.target.value)}
+                className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-base outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5">출역인원</label>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="flex flex-col items-center bg-slate-50 rounded-xl p-3 border border-slate-200">
+                  <span className="text-xs text-slate-500 mb-1">직원</span>
+                  <input
+                    type="number"
+                    value={workerStaff}
+                    onChange={e => setWorkerStaff(Number(e.target.value))}
+                    className="w-full text-center text-xl font-bold border-b border-slate-300 outline-none bg-transparent"
+                  />
+                </div>
+                <div className="flex flex-col items-center bg-slate-50 rounded-xl p-3 border border-slate-200">
+                  <span className="text-xs text-slate-500 mb-1">근로자</span>
+                  <input
+                    type="number"
+                    value={workerLaborer}
+                    onChange={e => setWorkerLaborer(Number(e.target.value))}
+                    className="w-full text-center text-xl font-bold border-b border-slate-300 outline-none bg-transparent"
+                  />
+                </div>
+                <div className="flex flex-col items-center bg-blue-50 rounded-xl p-3 border border-blue-200">
+                  <span className="text-xs text-blue-500 mb-1">계</span>
+                  <span className="text-xl font-bold text-blue-700">{workerStaff + workerLaborer}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 주요 작업내용 */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="bg-slate-50 px-4 py-3 border-b border-slate-100">
+            <h3 className="font-bold text-slate-800 text-sm">주요 작업내용</h3>
+          </div>
+          <div className="p-4">
+            <textarea
+              value={tasks}
+              onChange={e => setTasks(e.target.value)}
+              className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y min-h-[120px] leading-relaxed"
+              placeholder="오늘의 주요 작업내용을 입력하세요..."
+            />
+          </div>
+        </div>
+
+        {/* 위험요소 / 시정조치 */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="bg-slate-50 px-4 py-3 border-b border-slate-100">
+            <h3 className="font-bold text-slate-800 text-sm">위험요소 &amp; 시정조치</h3>
+          </div>
+          <div className="p-4 space-y-3">
+            <div>
+              <label className="block text-xs font-semibold text-rose-600 mb-1.5">위험요소 (지적사항)</label>
+              <textarea
+                value={hazardsText}
+                onChange={e => setHazardsText(e.target.value)}
+                className="w-full px-3 py-2.5 border border-rose-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-rose-400 focus:border-rose-400 resize-y min-h-[100px] leading-relaxed bg-rose-50/30"
+                placeholder="위험 요소를 입력하세요..."
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-emerald-600 mb-1.5">시정조치 (건의사항)</label>
+              <textarea
+                value={actionsText}
+                onChange={e => setActionsText(e.target.value)}
+                className="w-full px-3 py-2.5 border border-emerald-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 resize-y min-h-[100px] leading-relaxed bg-emerald-50/30"
+                placeholder="시정 조치를 입력하세요..."
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* 교육행사 / 기타사항 */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="bg-slate-50 px-4 py-3 border-b border-slate-100">
+            <h3 className="font-bold text-slate-800 text-sm">교육행사 &amp; 기타사항</h3>
+          </div>
+          <div className="p-4 space-y-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5">교육행사</label>
+              <input
+                type="text"
+                value={education}
+                onChange={e => setEducation(e.target.value)}
+                className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5">기타사항</label>
+              <input
+                type="text"
+                value={others}
+                onChange={e => setOthers(e.target.value)}
+                className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* AI 요약 */}
+        <div className="bg-blue-50 rounded-2xl border border-blue-200 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-blue-100 flex items-center justify-between">
+            <h3 className="font-bold text-blue-800 text-sm flex items-center">
+              <Sparkles className="w-4 h-4 mr-1.5" /> AI 위험요소 자동 요약
+            </h3>
+            <button
+              type="button"
+              onClick={generateSummary}
+              disabled={summarizing}
+              className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold disabled:opacity-50 flex items-center"
+            >
+              {summarizing && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+              {summarizing ? '요약 중...' : '요약 생성'}
+            </button>
+          </div>
+          <div className="p-4">
+            <textarea
+              value={aiSummary}
+              onChange={e => setAiSummary(e.target.value)}
+              className="w-full bg-white border border-blue-200 rounded-xl p-3 text-sm min-h-[80px] outline-none focus:ring-2 focus:ring-blue-400"
+              placeholder="위험요소를 먼저 입력한 후 요약 생성 버튼을 눌러 주세요."
+            />
+          </div>
+        </div>
+
+        {/* 결재 서명 */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="bg-slate-50 px-4 py-3 border-b border-slate-100">
+            <h3 className="font-bold text-slate-800 text-sm">결재 서명</h3>
+          </div>
+          <div className="p-4 grid grid-cols-2 gap-4">
+            {[
+              { label: '담당', sig: managerSignature, inputId: 'mobile-manager-sig', setSig: setManagerSignature },
+              { label: '소장', sig: directorSignature, inputId: 'mobile-director-sig', setSig: setDirectorSignature },
+            ].map(({ label, sig, inputId, setSig }) => (
+              <div key={label} className="flex flex-col items-center">
+                <span className="text-xs font-semibold text-slate-600 mb-2">{label}</span>
+                <div
+                  onClick={() => document.getElementById(inputId)?.click()}
+                  className="w-full aspect-square rounded-xl border-2 border-dashed border-slate-300 flex items-center justify-center cursor-pointer overflow-hidden relative bg-slate-50 hover:bg-slate-100 active:bg-slate-200 transition-colors"
+                >
+                  {sig ? (
+                    <>
+                      <img src={sig} alt={`${label} 서명`} className="w-full h-full object-contain p-2 mix-blend-multiply" />
+                      <button
+                        onClick={e => { e.stopPropagation(); setSig(''); }}
+                        className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full shadow"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </>
+                  ) : (
+                    <div className="flex flex-col items-center text-slate-400">
+                      <Camera className="w-6 h-6 mb-1" />
+                      <span className="text-xs">서명 추가</span>
+                    </div>
+                  )}
+                  <input
+                    type="file"
+                    id={inputId}
+                    accept="image/*"
+                    className="hidden"
+                    onChange={async e => {
+                      if (e.target.files?.[0]) {
+                        try { setSig(await captureAndCompressImage(e.target.files[0])); } catch (err) { console.error(err); }
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 관련 사진 */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="bg-slate-50 px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+            <h3 className="font-bold text-slate-800 text-sm">관련 사진</h3>
+            <label className="flex items-center px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold cursor-pointer">
+              <Plus className="w-3.5 h-3.5 mr-1" /> 사진추가
+              <input type="file" accept="image/*" capture="environment" className="hidden" onChange={addRelatedPhoto} />
+            </label>
+          </div>
+          <div className="p-4 space-y-4">
+            {relatedPhotos.length === 0 && (
+              <div className="text-center py-8 text-slate-400 text-sm">
+                <Camera className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                추가된 사진이 없습니다
+              </div>
+            )}
+            {relatedPhotos.map(photo => (
+              <div key={photo.id} className="rounded-xl border border-slate-200 overflow-hidden">
+                <div className="relative aspect-[4/3] bg-neutral-100">
+                  {photo.imageUrl
+                    ? <img src={photo.imageUrl} alt="현장사진" className="absolute inset-0 w-full h-full object-contain" />
+                    : <div className="absolute inset-0 flex items-center justify-center text-neutral-400 text-sm">사진 없음</div>
+                  }
+                  <button
+                    onClick={() => removeRelatedPhoto(photo.id)}
+                    className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full shadow"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="p-3 space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 mb-1">날짜</label>
+                      <input
+                        value={photo.date}
+                        onChange={e => setRelatedPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, date: e.target.value } : p))}
+                        className="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-blue-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 mb-1">위치</label>
+                      <input
+                        value={photo.location}
+                        onChange={e => updateRelatedPhoto(photo.id, 'location', e.target.value)}
+                        placeholder="위치 입력"
+                        className="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-blue-400"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 mb-1">지적사항</label>
+                    <textarea
+                      value={photo.issue}
+                      onChange={e => updateRelatedPhoto(photo.id, 'issue', e.target.value)}
+                      placeholder="지적사항 입력..."
+                      className="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-blue-400 resize-y min-h-[60px]"
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 체크리스트 섹션들 */}
+        {[
+          { title: '필수이행지침', items: MUST_DO_GUIDELINES, hasHazardTop: false },
+          { title: '5대금지규정', items: FIVE_PROHIBITIONS, hasHazardTop: false },
+          { title: '위험성평가 상등급 감소대책 이행여부', items: highRiskItems, hasHazardTop: true },
+          { title: '중점위험작업(PTW) 점검', items: PTW_INSPECTION, hasHazardTop: false },
+        ].map(({ title, items, hasHazardTop }) => {
+          const isHidden = hiddenSections[title];
+          const expanded = expandedSections[title] !== false;
+          return (
+            <div key={title} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <button
+                onClick={() => setExpandedSections(p => ({ ...p, [title]: !expanded }))}
+                className="w-full bg-slate-50 px-4 py-3 border-b border-slate-100 flex items-center justify-between"
+              >
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-slate-800 text-sm text-left">{title}</h3>
+                  {isHidden && <span className="text-xs text-rose-500 font-medium">(인쇄 숨김)</span>}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={e => { e.stopPropagation(); setHiddenSections(p => ({ ...p, [title]: !p[title] })); }}
+                    className={`text-xs px-2 py-0.5 rounded font-medium ${isHidden ? 'bg-rose-100 text-rose-700' : 'bg-slate-200 text-slate-600'}`}
+                  >
+                    {isHidden ? '인쇄 포함' : '인쇄 제외'}
+                  </button>
+                  {expanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+                </div>
+              </button>
+
+              {expanded && (
+                <div className="divide-y divide-slate-100">
+                  {items.map(item => {
+                    const rowHiddenId = `${title}_${item.id}`;
+                    const val = checklist[item.id] || { status: 'N/A', action: '', photoUrl: '' };
+                    const categoryText = val.category !== undefined ? val.category : item.category;
+                    const hazardText = hasHazardTop
+                      ? (val.hazardTop !== undefined ? val.hazardTop : item.hazardTop)
+                      : (val.hazard !== undefined ? val.hazard : item.hazard);
+                    const hazardBottomText = hasHazardTop
+                      ? (val.hazardBottom !== undefined ? val.hazardBottom : item.hazardBottom)
+                      : '';
+
+                    if (hiddenSections[rowHiddenId]) {
+                      return (
+                        <div key={item.id} className="px-4 py-2 flex items-center justify-between text-xs bg-slate-50 text-slate-400">
+                          <span>{categoryText} (숨김)</span>
+                          <button onClick={() => setHiddenSections(p => ({ ...p, [rowHiddenId]: false }))} className="px-2 py-0.5 bg-slate-200 rounded font-medium text-slate-600">숨김 해제</button>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div key={item.id} className="p-4 space-y-3">
+                        {/* 항목 헤더 */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1">
+                            <span className="inline-block text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md mb-1">{categoryText}</span>
+                            <p className="text-xs text-slate-600 leading-relaxed">{hazardText}</p>
+                            {hasHazardTop && hazardBottomText && (
+                              <p className="text-xs text-emerald-700 leading-relaxed mt-1 border-t border-slate-100 pt-1">▶ {hazardBottomText}</p>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => setHiddenSections(p => ({ ...p, [rowHiddenId]: true }))}
+                            className="shrink-0 p-1 text-slate-300 hover:text-slate-500 rounded"
+                            title="인쇄 시 숨기기"
+                          >
+                            <MinusCircle className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {/* 점검 상태 — 탭 버튼 */}
+                        <div className="grid grid-cols-4 gap-1.5">
+                          {(['양호', '불량', '미해당', 'N/A'] as const).map(s => (
+                            <button
+                              key={s}
+                              onClick={() => handleChecklistChange(item.id, 'status', s)}
+                              className={`py-2 rounded-xl text-xs font-bold border-2 transition-all ${
+                                val.status === s
+                                  ? s === '양호' ? 'bg-emerald-500 border-emerald-500 text-white shadow-sm'
+                                  : s === '불량' ? 'bg-rose-500 border-rose-500 text-white shadow-sm'
+                                  : 'bg-slate-600 border-slate-600 text-white shadow-sm'
+                                  : 'bg-white border-slate-200 text-slate-500'
+                              }`}
+                            >
+                              {s}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* 점검사진 */}
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-500 mb-1.5">점검사진</label>
+                          {val.photoUrl ? (
+                            <div className="relative rounded-xl overflow-hidden border border-slate-200">
+                              <img src={val.photoUrl} alt="점검사진" className="w-full object-contain max-h-48" />
+                              <button
+                                onClick={() => handleChecklistChange(item.id, 'photoUrl', '')}
+                                className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full shadow"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ) : (
+                            <label className="flex items-center justify-center h-16 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 cursor-pointer active:bg-slate-100">
+                              <Camera className="w-4 h-4 mr-2 text-slate-400" />
+                              <span className="text-xs text-slate-500 font-medium">사진 추가</span>
+                              <input type="file" accept="image/*" capture="environment" className="hidden" onChange={e => handleChecklistPhotoUpload(item.id, e)} />
+                            </label>
+                          )}
+                        </div>
+
+                        {/* 점검내용 */}
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-500 mb-1.5">점검내용</label>
+                          <textarea
+                            value={val.action || ''}
+                            onChange={e => handleChecklistChange(item.id, 'action', e.target.value)}
+                            placeholder="점검내용을 입력하세요..."
+                            className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-400 resize-y min-h-[72px] leading-relaxed"
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ─── 데스크톱 전용 테이블 레이아웃 (md 이상에서만 표시, 인쇄 시 항상 렌더링) ─── */}
+      <div className="overflow-x-auto print:overflow-visible pb-6 -mx-4 sm:mx-0 px-4 sm:px-0 scrollbar-hide styled-scrollbar hidden md:block print:block">
         <div className="sm:hidden mb-2 flex items-center justify-center text-xs text-blue-600 bg-blue-50 py-1.5 rounded-md font-medium">
           <ArrowLeft className="w-3 h-3 mr-1 inline-block" /> 좌우로 스와이프하여 양식 작성 <ArrowLeft className="w-3 h-3 ml-1 inline-block rotate-180" />
         </div>
