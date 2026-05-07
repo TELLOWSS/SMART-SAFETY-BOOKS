@@ -63,21 +63,21 @@ function Layout({ children }: { children: React.ReactNode }) {
             <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-blue-400 to-blue-600 hc:from-black hc:to-black hc:bg-black hc:rounded-none text-white shadow-lg shadow-blue-500/20 mr-3">
               <Shield className="w-5 h-5" />
             </div>
-            <h1 className="font-bold text-xl tracking-tight text-white focus:outline-none">SafetyCore</h1>
+            <h1 className="font-bold text-xl tracking-tight text-white focus:outline-none">안전전담자 운영일지</h1>
           </div>
           <nav className="p-4 mt-2">
-             <div className="text-[11px] font-bold text-slate-500 hc:text-slate-300 uppercase tracking-widest mb-4 px-3">Main Menu</div>
-             <NavLink to="/" icon={Home}>대시보드</NavLink>
-             <NavLink to="/logs" icon={FileText}>일지 관리</NavLink>
+             <div className="text-[11px] font-bold text-slate-500 hc:text-slate-300 uppercase tracking-widest mb-4 px-3">운영일지 메뉴</div>
+             <NavLink to="/" icon={Home}>운영일지 목록</NavLink>
+             <NavLink to="/logs/new" icon={FileText}>신규 일지 작성</NavLink>
              <NavLink to="/risk-assessment" icon={AlertTriangle}>월간 위험성평가</NavLink>
-             <NavLink to="/analysis" icon={BarChart2}>통계 및 분석</NavLink>
+             <NavLink to="/analysis" icon={BarChart2}>운영일지 통계</NavLink>
           </nav>
         </div>
         <div className="p-5 border-t border-slate-800/80 bg-slate-900/30">
           <div className="flex items-center justify-between">
             <div className="flex flex-col">
-              <span className="text-sm font-bold text-white truncate">현장 담당자</span>
-              <span className="text-xs text-slate-400 font-medium mt-0.5">안전팀 (게스트)</span>
+              <span className="text-sm font-bold text-white truncate">안전전담자</span>
+              <span className="text-xs text-slate-400 font-medium mt-0.5">익명 계정</span>
             </div>
             <div className="flex items-center space-x-1">
               <button onClick={cycleTheme} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition-colors relative" title="테마 변경">
@@ -98,7 +98,7 @@ function Layout({ children }: { children: React.ReactNode }) {
              <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-blue-400 to-blue-600 hc:from-white hc:to-white hc:text-black text-white mr-2.5 shadow-sm">
                <Shield className="w-4 h-4" />
              </div>
-             <span className="font-bold text-lg text-slate-900 dark:text-white hc:text-white">SafetyCore</span>
+             <span className="font-bold text-base text-slate-900 dark:text-white hc:text-white">안전전담자 운영일지</span>
           </div>
           <div className="flex items-center space-x-1">
             <button onClick={cycleTheme} className="p-2 text-slate-400 dark:text-slate-300 hc:text-white hover:text-blue-600 hc:hover:bg-white hc:hover:text-black hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
@@ -116,10 +116,10 @@ function Layout({ children }: { children: React.ReactNode }) {
         
         {/* Mobile Nav */}
         <nav className="md:hidden print:hidden border-t border-slate-200 bg-white/80 backdrop-blur-md flex justify-around p-2 shrink-0 pb-safe z-10 shadow-[0_-4px_10px_-1px_rgba(0,0,0,0.05)]">
-           <Link to="/" className="p-2 flex flex-col items-center text-slate-500 hover:text-blue-600"><Home className="w-6 h-6" /><span className="text-[10px] mt-1 font-medium">홈</span></Link>
-           <Link to="/logs" className="p-2 flex flex-col items-center text-slate-500 hover:text-blue-600"><FileText className="w-6 h-6" /><span className="text-[10px] mt-1 font-medium">일지</span></Link>
+            <Link to="/" className="p-2 flex flex-col items-center text-slate-500 hover:text-blue-600"><Home className="w-6 h-6" /><span className="text-[10px] mt-1 font-medium">일지 목록</span></Link>
+            <Link to="/logs/new" className="p-2 flex flex-col items-center text-slate-500 hover:text-blue-600"><FileText className="w-6 h-6" /><span className="text-[10px] mt-1 font-medium">신규 작성</span></Link>
            <Link to="/risk-assessment" className="p-2 flex flex-col items-center text-slate-500 hover:text-blue-600"><AlertTriangle className="w-6 h-6" /><span className="text-[10px] mt-1 font-medium">위험성평가</span></Link>
-           <Link to="/analysis" className="p-2 flex flex-col items-center text-slate-500 hover:text-blue-600"><BarChart2 className="w-6 h-6" /><span className="text-[10px] mt-1 font-medium">분석</span></Link>
+           <Link to="/analysis" className="p-2 flex flex-col items-center text-slate-500 hover:text-blue-600"><BarChart2 className="w-6 h-6" /><span className="text-[10px] mt-1 font-medium">통계</span></Link>
         </nav>
       </div>
     </div>
@@ -130,7 +130,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<ProtectedRoute><Layout><AnalysisDashboard /></Layout></ProtectedRoute>} />
+        <Route path="/" element={<ProtectedRoute><Layout><DailyLogList /></Layout></ProtectedRoute>} />
         <Route path="/logs" element={<ProtectedRoute><Layout><DailyLogList /></Layout></ProtectedRoute>} />
         <Route path="/logs/print" element={<ProtectedRoute><PrintLogs /></ProtectedRoute>} />
         <Route path="/logs/new" element={<ProtectedRoute><Layout><DailyLogForm /></Layout></ProtectedRoute>} />

@@ -8,6 +8,30 @@ interface ThemeState {
   setTheme: (theme: Theme) => void;
 }
 
+const LEGACY_THEME_KEYS = ['safetycore-theme', 'safety-journal-theme'] as const;
+const THEME_KEY = 'safe-log-theme';
+
+function migrateLegacyThemeStorage() {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const hasNewKey = window.localStorage.getItem(THEME_KEY);
+    if (hasNewKey) return;
+
+    for (const legacyKey of LEGACY_THEME_KEYS) {
+      const legacyValue = window.localStorage.getItem(legacyKey);
+      if (!legacyValue) continue;
+
+      window.localStorage.setItem(THEME_KEY, legacyValue);
+      break;
+    }
+  } catch {
+    // localStorage 접근 제한 환경에서는 무시
+  }
+}
+
+migrateLegacyThemeStorage();
+
 export const useThemeStore = create<ThemeState>()(
   persist(
     (set) => ({
@@ -29,6 +53,6 @@ export const useThemeStore = create<ThemeState>()(
         }
       },
     }),
-    { name: 'safetycore-theme' }
+    { name: THEME_KEY }
   )
 );

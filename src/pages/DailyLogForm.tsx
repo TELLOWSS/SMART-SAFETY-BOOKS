@@ -462,7 +462,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
           </button>
           <div className="flex flex-col items-end gap-3">
             <div className="text-xs text-neutral-500 text-right">
-              💡 <strong>PDF/이미지 저장:</strong> "PDF 저장하기" 버튼 → 브라우저 인쇄 → "PDF로 저장" 또는 스크린샷 사용
+              💡 <strong>PDF 출력:</strong> "PDF 출력" 버튼 → 브라우저 인쇄 → "PDF로 저장" 선택
             </div>
             <div className="space-x-2">
               <button 
@@ -470,7 +470,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
                 className="inline-flex items-center px-4 py-2 bg-white border border-neutral-300 text-neutral-700 rounded-md font-medium text-sm hover:bg-neutral-50"
               >
                 <Printer className="w-4 h-4 mr-1.5" />
-                PDF 저장하기
+                PDF 출력
               </button>
               <button 
                 onClick={handleSave} 
@@ -1079,14 +1079,14 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
                 disabled={summarizing}
               >
                 {summarizing ? <Loader2 className="w-3 h-3 mr-1 animate-spin inline" /> : null}
-                {summarizing ? '요약 중...' : '요약 생성하기'}
+                 {summarizing ? '요약 중...' : '요약 생성'}
               </button>
            </div>
            <textarea 
              value={aiSummary} 
              onChange={e => setAiSummary(e.target.value)}
              className="w-full bg-white border border-blue-200 rounded p-3 text-sm min-h-[80px]" 
-             placeholder="위험요소를 입력하고 요약 생성하기 버튼을 누르면 AI가 주요 위험 핵심을 요약합니다."
+               placeholder="위험요소를 입력하고 요약 생성 버튼을 누르면 AI가 주요 위험 핵심을 요약합니다."
            />
         </div>
 

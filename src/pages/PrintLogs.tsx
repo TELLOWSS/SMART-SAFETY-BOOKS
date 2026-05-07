@@ -28,12 +28,12 @@ export default function PrintLogs() {
                className="inline-flex items-center px-5 py-2 bg-neutral-900 text-white rounded-md font-medium hover:bg-black shadow"
             >
                <Printer className="w-4 h-4 mr-2" />
-               PDF/이미지 저장
+               PDF 출력
             </button>
           </div>
         </div>
         <div className="text-xs text-neutral-500 ml-auto">
-          💡 <strong>품질 최적화:</strong> PDF 저장 시 브라우저 인쇄 → "PDF로 저장" 선택. 여백은 최소(10mm)로 설정하시면 최적입니다.
+          💡 <strong>품질 최적화:</strong> PDF 출력 시 브라우저 인쇄 → "PDF로 저장" 선택. 여백은 최소(10mm)로 설정하시면 최적입니다.
         </div>
       </div>
 

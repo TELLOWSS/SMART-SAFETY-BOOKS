@@ -152,9 +152,9 @@ export default function DailyLogList() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center">
-            <FileText className="w-6 h-6 mr-2 text-indigo-600" /> 안전 운영일지 목록
+            <FileText className="w-6 h-6 mr-2 text-indigo-600" /> 안전전담자 운영일지 목록
           </h2>
-          <p className="text-sm text-slate-500 mt-1">작성된 안전일지를 관리하고 PDF로 출력하거나 데이터를 백업하세요.</p>
+          <p className="text-sm text-slate-500 mt-1">작성된 운영일지를 관리하고 PDF로 출력하거나 데이터를 백업하세요.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {selectedLogs.size > 0 && (
@@ -164,7 +164,7 @@ export default function DailyLogList() {
                  className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-sm font-medium text-sm"
               >
                 <Printer className="w-4 h-4 mr-2" />
-                선택 인쇄 ({selectedLogs.size})
+                선택 PDF 출력 ({selectedLogs.size})
               </button>
               <button
                  onClick={deleteSelectedLogs}
@@ -226,7 +226,7 @@ export default function DailyLogList() {
                 className="inline-flex items-center px-3 py-1.5 bg-neutral-800 text-white rounded font-medium text-sm hover:bg-neutral-900 disabled:opacity-50"
              >
                 <Printer className="w-4 h-4 mr-1.5" />
-                선택 인쇄/PDF
+               선택 PDF 출력
              </button>
          </div>
       </div>
@@ -237,12 +237,12 @@ export default function DailyLogList() {
         <div className="border border-dashed border-neutral-300 rounded-xl p-12 text-center bg-neutral-50">
           <FileText className="w-12 h-12 text-neutral-400 mx-auto mb-3" />
           <h3 className="text-lg font-medium text-neutral-900 mb-1">작성된 일지가 없습니다</h3>
-          <p className="text-neutral-500 mb-4">첫 번째 안전 운영일지를 작성해보세요.</p>
+          <p className="text-neutral-500 mb-4">첫 번째 안전전담자 운영일지를 작성해보세요.</p>
           <Link
             to="/logs/new"
             className="inline-flex items-center px-4 py-2 bg-white border border-neutral-300 rounded-md font-medium text-sm hover:bg-neutral-50"
           >
-            새 일지 작성하기
+            신규 일지 작성
           </Link>
         </div>
       ) : (

@@ -96,9 +96,9 @@ export default function AnalysisDashboard() {
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white hc:text-white flex items-center">
              <BarChart2 className="w-6 h-6 mr-2 text-indigo-600 hc:text-white" />
-             안전 관제소 (Control Tower)
+             운영일지 통계
           </h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400 hc:text-slate-300 mt-1">현장의 안전 지표와 추이를 실시간으로 분석합니다.</p>
+           <p className="text-sm text-slate-500 dark:text-slate-400 hc:text-slate-300 mt-1">안전전담자 운영일지 데이터를 기준으로 지표와 추이를 분석합니다.</p>
         </div>
         <div className="flex space-x-2 bg-slate-50 dark:bg-slate-800 hc:bg-black p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 hc:border-white">
           <button 
