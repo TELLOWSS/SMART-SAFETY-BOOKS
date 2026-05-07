@@ -18,29 +18,30 @@
     box-shadow: none !important;
   }
 
-  /* 인쇄 전용 뷰(DailyLogPrintView) 내부 테두리만 검정색으로 통일 */
+  /* ① 색상·스타일 통일 */
   .print-form-root,
   .print-form-root * {
     border-color: #000 !important;
     border-style: solid !important;
   }
 
-  /* 일반 border 클래스 두께 조정 (인쇄 시 선명하게) */
-  .print-form-root .border,
-  .print-form-root .border-b,
-  .print-form-root .border-t,
-  .print-form-root .border-l,
-  .print-form-root .border-r {
-    border-width: 1px !important;
+  /* ② 루트 자신의 외곽 2px 테두리 명시 (descendant 선택자로는 자기 자신에 미적용되는 문제 해결) */
+  .print-form-root {
+    border: 2px solid #000 !important;
   }
 
-  .print-form-root .border-2,
-  .print-form-root .border-b-2,
-  .print-form-root .border-t-2,
-  .print-form-root .border-l-2,
-  .print-form-root .border-r-2 {
-    border-width: 2px !important;
-  }
+  /* ③ 자식 요소 두께 — Tailwind 클래스 우선순위 보장 */
+  .print-form-root .border   { border-width: 1px !important; }
+  .print-form-root .border-2 { border-width: 2px !important; }
+
+  .print-form-root .border-b   { border-bottom-width: 1px !important; }
+  .print-form-root .border-b-2 { border-bottom-width: 2px !important; }
+  .print-form-root .border-t   { border-top-width: 1px !important; }
+  .print-form-root .border-t-2 { border-top-width: 2px !important; }
+  .print-form-root .border-r   { border-right-width: 1px !important; }
+  .print-form-root .border-r-2 { border-right-width: 2px !important; }
+  .print-form-root .border-l   { border-left-width: 1px !important; }
+  .print-form-root .border-l-2 { border-left-width: 2px !important; }
 
   /* 페이지 여백 */
   @page {
