@@ -498,7 +498,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
         <div className="sm:hidden mb-2 flex items-center justify-center text-xs text-blue-600 bg-blue-50 py-1.5 rounded-md font-medium">
           <ArrowLeft className="w-3 h-3 mr-1 inline-block" /> 좌우로 스와이프하여 양식 작성 <ArrowLeft className="w-3 h-3 ml-1 inline-block rotate-180" />
         </div>
-        <div className="bg-white mx-auto print:shadow-none print:border-0 rounded-none sm:rounded-lg overflow-hidden print:overflow-visible text-neutral-900 border-2 border-black min-w-[800px] w-full break-keep shadow-sm relative group" style={{ fontFamily: 'serif', wordBreak: 'keep-all' }}>
+        <div className="print-form-root bg-white mx-auto print:shadow-none rounded-none sm:rounded-lg overflow-hidden print:overflow-visible text-neutral-900 border-2 border-black min-w-[800px] w-full break-keep shadow-sm relative group" style={{ fontFamily: 'serif', wordBreak: 'keep-all' }}>
         
         {/* Title & Signatures block */}
         <div className="flex justify-between items-stretch border-b-2 border-black">
