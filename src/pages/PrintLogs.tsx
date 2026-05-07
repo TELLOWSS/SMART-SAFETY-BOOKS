@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import DailyLogForm from './DailyLogForm';
+import DailyLogPrintView from './DailyLogPrintView';
 import { Printer, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -33,16 +33,16 @@ export default function PrintLogs() {
           </div>
         </div>
         <div className="text-xs text-neutral-500 ml-auto">
-          💡 <strong>품질 최적화:</strong> 버튼 클릭 후 "PDF로 저장" 또는 "인쇄 미리보기"에서 스크린샷 사용
+          💡 <strong>품질 최적화:</strong> PDF 저장 시 브라우저 인쇄 → "PDF로 저장" 선택. 여백은 최소(10mm)로 설정하시면 최적입니다.
         </div>
       </div>
 
       <div className="flex flex-col space-y-12 print:space-y-0 px-4 print:p-0">
         {ids.length > 0 ? (
           ids.map((id, index) => (
-             <div key={id} className="bg-white print:bg-transparent p-8 print:p-0 shadow print:shadow-none mx-auto w-full max-w-5xl">
+             <div key={id} className="bg-white print:bg-transparent p-8 print:p-0 shadow print:shadow-none mx-auto w-full max-w-5xl print:break-after-page">
                 <div className="print:hidden text-center text-sm font-bold text-neutral-400 mb-4 tracking-widest">{index + 1}번째 일지</div>
-                <DailyLogForm logIdProp={id} />
+                <DailyLogPrintView logId={id} />
              </div>
           ))
         ) : (
