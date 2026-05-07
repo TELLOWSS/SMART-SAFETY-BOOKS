@@ -4,7 +4,7 @@ import { doc, getDoc, setDoc, updateDoc, serverTimestamp, collection } from 'fir
 import { db, auth, handleFirestoreError } from '../lib/auth';
 import { DailyLog, ChecklistData, RelatedPhoto } from '../lib/types';
 import { MUST_DO_GUIDELINES, FIVE_PROHIBITIONS, HIGH_RISK_ASSESSMENTS, PTW_INSPECTION } from '../lib/checklistTypes';
-import { ArrowLeft, Save, Sparkles, Loader2, Camera, Plus, Trash2, Printer, ChevronDown, ChevronUp, CheckCircle2, XCircle, MinusCircle } from 'lucide-react';
+import { ArrowLeft, Save, Sparkles, Loader2, Camera, Plus, Trash2, Printer, ChevronDown, ChevronUp, MinusCircle } from 'lucide-react';
 import { format } from 'date-fns';
 
 import { triggerHaptic } from '../lib/haptic';
@@ -29,13 +29,19 @@ function captureAndCompressImage(file: File): Promise<string> {
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         if (ctx) {
-          // Fill with white background to prevent transparent areas from turning black in JPEG
           ctx.fillStyle = '#ffffff';
           ctx.fillRect(0, 0, width, height);
           ctx.drawImage(img, 0, 0, width, height);
         }
+        // 메모리 해제: src 초기화로 브라우저 이미지 캐시 참조 제거
+        img.src = '';
         triggerHaptic('success');
         resolve(canvas.toDataURL('image/jpeg', 0.8));
+      };
+      // onerror 미설정 시 Promise 영구 대기(메모리 누수) → reject로 명시 해제
+      img.onerror = () => {
+        img.src = '';
+        reject(new Error('이미지 로드 실패'));
       };
       img.src = e.target?.result as string;
     };
@@ -74,6 +80,8 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(
     { '필수이행지침': true, '5대금지규정': true, '위험성평가 상등급 감소대책 이행여부': true, '중점위험작업(PTW) 점검': true }
   );
+  // 언마운트 감지 ref — 비동기 작업 후 setState 방지(메모리 누수 차단)
+  const mountedRef = useRef(true);
 
   const generateSummary = async () => {
     if (!hazardsText && !actionsText) {
@@ -88,6 +96,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
         body: JSON.stringify({ hazards: hazardsText, actions: actionsText })
       });
       const data = await res.json();
+      if (!mountedRef.current) return;
       if (data.summary) {
         setAiSummary(data.summary);
       } else {
@@ -95,20 +104,24 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
       }
     } catch (err) {
       console.error(err);
-      alert("서버 오류가 발생했습니다.");
+      if (mountedRef.current) alert("서버 오류가 발생했습니다.");
     } finally {
-      setSummarizing(false);
+      if (mountedRef.current) setSummarizing(false);
     }
   };
 
   useEffect(() => {
+    mountedRef.current = true;
     const unsubscribe = auth.onAuthStateChanged(user => {
        if (user) {
          if (id) loadLog();
          else loadDefaults();
        }
     });
-    return () => unsubscribe();
+    return () => {
+      mountedRef.current = false;
+      unsubscribe();
+    };
   }, [id]);
 
   const loadDefaults = async () => {
@@ -116,7 +129,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
       const reqId = auth.currentUser?.uid;
       if (reqId) {
          const snap = await getDoc(doc(db, 'settings', `risk_assessment_${reqId}`));
-         if (snap.exists() && snap.data()?.items) {
+         if (snap.exists() && snap.data()?.items && mountedRef.current) {
              setHighRiskItems(snap.data()?.items);
          }
       }
@@ -131,6 +144,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
         const data = docSnap.data();
+        if (!mountedRef.current) return;
         setDate(data.date);
         setWorkerStaff(data.workerStaff);
         setWorkerLaborer(data.workerLaborer);
@@ -162,9 +176,9 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
         
       }
     } catch (error) {
-      handleFirestoreError(error, 'get', 'logs');
+      if (mountedRef.current) handleFirestoreError(error, 'get', 'logs');
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   };
 
@@ -204,6 +218,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
         });
       }
 
+      if (!mountedRef.current) return;
       if (!id) {
         navigate(`/logs/${logId}`);
       } else {
@@ -211,9 +226,9 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
       }
     } catch (error) {
       console.error(error);
-      handleFirestoreError(error, 'write', 'logs');
+      if (mountedRef.current) handleFirestoreError(error, 'write', 'logs');
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   };
 

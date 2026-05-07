@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { collection, query, orderBy, getDocs } from 'firebase/firestore';
 import { db, auth, handleFirestoreError } from '../lib/auth';
 import { DailyLog, ChecklistData } from '../lib/types';
@@ -12,9 +12,12 @@ export default function AnalysisDashboard() {
   const [logs, setLogs] = useState<DailyLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<Period>('weekly');
+  const mountedRef = useRef(true);
 
   useEffect(() => {
+    mountedRef.current = true;
     loadData();
+    return () => { mountedRef.current = false; };
   }, []);
 
   const loadData = async () => {
@@ -22,15 +25,16 @@ export default function AnalysisDashboard() {
     try {
       const q = query(collection(db, 'logs'), orderBy('date', 'desc'));
       const snapshot = await getDocs(q);
+      if (!mountedRef.current) return;
       const logData: DailyLog[] = [];
       snapshot.forEach(doc => {
         logData.push({ id: doc.id, ...doc.data() } as DailyLog);
       });
       setLogs(logData);
     } catch (error) {
-      handleFirestoreError(error, 'list', 'logs');
+      if (mountedRef.current) handleFirestoreError(error, 'list', 'logs');
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   };
 

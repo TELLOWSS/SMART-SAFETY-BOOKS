@@ -4,7 +4,7 @@
  * - 화면 작성 양식과 동일한 레이아웃, 동일한 데이터를 순수 텍스트/표로 표시
  * - window.print() 시 화면에 보이는 그대로 출력됨
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db, auth } from '../lib/auth';
 import { DailyLog, ChecklistData, RelatedPhoto } from '../lib/types';
@@ -21,35 +21,43 @@ export default function DailyLogPrintView({ logId }: Props) {
   const [highRiskItems, setHighRiskItems] = useState(HIGH_RISK_ASSESSMENTS);
   const [hiddenSections, setHiddenSections] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
+    mountedRef.current = true;
     const load = async () => {
-      if (!logId || !auth.currentUser) return;
-      try {
-        const snap = await getDoc(doc(db, 'logs', logId));
-        if (snap.exists()) {
-          const data = snap.data() as Omit<DailyLog, 'id'>;
-          setLog({ id: snap.id, ...data });
-          if (data.checklistData) setChecklist(JSON.parse(data.checklistData));
-          if (data.relatedPhotosData) setRelatedPhotos(JSON.parse(data.relatedPhotosData));
-          if ((data as any).hiddenSections) setHiddenSections((data as any).hiddenSections);
-        }
-
-        // 사용자 위험성평가 설정 로드
-        const uid = auth.currentUser?.uid;
-        if (uid) {
+      if (!logId) return;
+      // auth 가 아직 초기화되지 않았을 수 있으므로 onAuthStateChanged로 안전하게 대기
+      const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
+        if (!user || !mountedRef.current) return;
+        unsubscribeAuth(); // 한 번만 실행
+        try {
+          const snap = await getDoc(doc(db, 'logs', logId));
+          if (!mountedRef.current) return;
+          if (snap.exists()) {
+            const data = snap.data() as Omit<DailyLog, 'id'>;
+            setLog({ id: snap.id, ...data });
+            if (data.checklistData) setChecklist(JSON.parse(data.checklistData));
+            if (data.relatedPhotosData) setRelatedPhotos(JSON.parse(data.relatedPhotosData));
+            if ((data as any).hiddenSections) setHiddenSections((data as any).hiddenSections);
+          }
+          const uid = user.uid;
           const riskSnap = await getDoc(doc(db, 'settings', `risk_assessment_${uid}`));
+          if (!mountedRef.current) return;
           if (riskSnap.exists() && riskSnap.data()?.items) {
             setHighRiskItems(riskSnap.data()!.items);
           }
+        } catch (e) {
+          console.error(e);
+        } finally {
+          if (mountedRef.current) setLoading(false);
         }
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
+      });
     };
     load();
+    return () => {
+      mountedRef.current = false;
+    };
   }, [logId]);
 
   if (loading) return <div className="text-center p-8 text-neutral-400">일지 로딩 중...</div>;
