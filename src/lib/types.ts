@@ -1,6 +1,7 @@
 export interface DailyLog {
   id: string;
   ownerId: string;
+  siteName?: string;
   date: string;
   workerStaff: number;
   workerLaborer: number;

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp, collection } from 'firebase/firestore';
+import { doc, getDoc, getDocs, setDoc, updateDoc, serverTimestamp, collection, query, where, orderBy, limit } from 'firebase/firestore';
 import { db, auth, handleFirestoreError } from '../lib/auth';
 import { DailyLog, ChecklistData, RelatedPhoto } from '../lib/types';
 import { MUST_DO_GUIDELINES, FIVE_PROHIBITIONS, HIGH_RISK_ASSESSMENTS, PTW_INSPECTION } from '../lib/checklistTypes';
@@ -8,6 +8,71 @@ import { ArrowLeft, Save, Sparkles, Loader2, Camera, Plus, Trash2, Printer, Chev
 import { format } from 'date-fns';
 
 import { triggerHaptic } from '../lib/haptic';
+
+type CopyFieldOptions = {
+  workforce: boolean;
+  tasks: boolean;
+  hazards: boolean;
+  misc: boolean;
+  checklist: boolean;
+  aiSummary: boolean;
+};
+
+const DEFAULT_COPY_FIELD_OPTIONS: CopyFieldOptions = {
+  workforce: true,
+  tasks: true,
+  hazards: true,
+  misc: true,
+  checklist: true,
+  aiSummary: true,
+};
+
+const normalizeCopyFieldOptions = (value: unknown): CopyFieldOptions => ({
+  ...DEFAULT_COPY_FIELD_OPTIONS,
+  ...(value && typeof value === 'object' ? value as Partial<CopyFieldOptions> : {}),
+});
+
+type SiteTemplateData = {
+  workerStaff: number;
+  workerLaborer: number;
+  tasks: string;
+  education: string;
+  others: string;
+  hazardsText: string;
+  actionsText: string;
+  checklistData: string;
+  aiSummary: string;
+  hiddenSections: Record<string, boolean>;
+  savedAt: string;
+};
+
+const normalizeSiteTemplates = (value: unknown): Record<string, SiteTemplateData> => {
+  if (!value || typeof value !== 'object') {
+    return {};
+  }
+
+  return Object.entries(value as Record<string, unknown>).reduce<Record<string, SiteTemplateData>>((acc, [templateName, templateValue]) => {
+    if (!templateValue || typeof templateValue !== 'object') {
+      return acc;
+    }
+
+    const nextTemplate = templateValue as Partial<SiteTemplateData>;
+    acc[templateName] = {
+      workerStaff: typeof nextTemplate.workerStaff === 'number' ? nextTemplate.workerStaff : 0,
+      workerLaborer: typeof nextTemplate.workerLaborer === 'number' ? nextTemplate.workerLaborer : 0,
+      tasks: nextTemplate.tasks || '',
+      education: nextTemplate.education || '특이사항 없음',
+      others: nextTemplate.others || '특이사항 없음',
+      hazardsText: nextTemplate.hazardsText || '',
+      actionsText: nextTemplate.actionsText || '',
+      checklistData: nextTemplate.checklistData || '{}',
+      aiSummary: nextTemplate.aiSummary || '',
+      hiddenSections: nextTemplate.hiddenSections || {},
+      savedAt: nextTemplate.savedAt || '',
+    };
+    return acc;
+  }, {});
+};
 
 function captureAndCompressImage(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -56,6 +121,16 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [summarizing, setSummarizing] = useState(false);
+  const [copyingPrevious, setCopyingPrevious] = useState(false);
+  const [recentLogs, setRecentLogs] = useState<Array<DailyLog & { id: string }>>([]);
+  const [selectedSourceLogId, setSelectedSourceLogId] = useState('');
+  const [autoFilledLogDate, setAutoFilledLogDate] = useState('');
+  const [autoFillEnabled, setAutoFillEnabled] = useState(true);
+  const [copyFieldOptions, setCopyFieldOptions] = useState<CopyFieldOptions>(DEFAULT_COPY_FIELD_OPTIONS);
+  const [siteName, setSiteName] = useState('');
+  const [siteTemplates, setSiteTemplates] = useState<Record<string, SiteTemplateData>>({});
+  const [savingSiteTemplate, setSavingSiteTemplate] = useState(false);
+  const [loadingSiteTemplate, setLoadingSiteTemplate] = useState(false);
 
   const [highRiskItems, setHighRiskItems] = useState(HIGH_RISK_ASSESSMENTS);
 
@@ -82,6 +157,114 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
   );
   // 언마운트 감지 ref — 비동기 작업 후 setState 방지(메모리 누수 차단)
   const mountedRef = useRef(true);
+  const autoFilledRef = useRef(false);
+
+  const applyLogToForm = (data: Partial<DailyLog>, options?: { preserveDate?: boolean; clearImages?: boolean; copyFields?: CopyFieldOptions; overwriteSiteName?: boolean }) => {
+    const preserveDate = options?.preserveDate ?? false;
+    const clearImages = options?.clearImages ?? false;
+    const copyFields = options?.copyFields ?? DEFAULT_COPY_FIELD_OPTIONS;
+    const overwriteSiteName = options?.overwriteSiteName ?? true;
+
+    if (overwriteSiteName) {
+      setSiteName(data.siteName || '');
+    }
+
+    if (!preserveDate && data.date) {
+      setDate(data.date);
+    }
+
+    if (copyFields.workforce) {
+      setWorkerStaff(typeof data.workerStaff === 'number' ? data.workerStaff : 0);
+      setWorkerLaborer(typeof data.workerLaborer === 'number' ? data.workerLaborer : 0);
+    }
+
+    if (copyFields.tasks) {
+      setTasks(data.tasks || '');
+    }
+
+    if (copyFields.misc) {
+      setEducation(data.education || '');
+      setOthers(data.others || '');
+    }
+
+    if (copyFields.hazards) {
+      setHazardsText(data.hazardsText || '');
+      setActionsText(data.actionsText || '');
+    }
+
+    if (copyFields.aiSummary) {
+      setAiSummary(data.aiSummary || '');
+    }
+
+    if (copyFields.checklist && data.checklistData) {
+      try {
+        const parsedChecklist = JSON.parse(data.checklistData) as ChecklistData;
+        if (clearImages) {
+          const checklistWithoutPhotos = Object.fromEntries(
+            Object.entries(parsedChecklist).map(([itemId, itemValue]) => [
+              itemId,
+              { ...itemValue, photoUrl: '' }
+            ])
+          ) as ChecklistData;
+          setChecklist(checklistWithoutPhotos);
+        } else {
+          setChecklist(parsedChecklist);
+        }
+      } catch {
+        setChecklist({});
+      }
+    } else if (copyFields.checklist) {
+      setChecklist({});
+    }
+
+    if (data.relatedPhotosData && !clearImages) {
+      try {
+        setRelatedPhotos(JSON.parse(data.relatedPhotosData));
+      } catch {
+        setRelatedPhotos([]);
+      }
+    } else {
+      setRelatedPhotos([]);
+    }
+
+    setManagerSignature(clearImages ? '' : (data.managerSignature || ''));
+    setDirectorSignature(clearImages ? '' : (data.directorSignature || ''));
+    if (copyFields.checklist) {
+      setHiddenSections((data as DailyLog & { hiddenSections?: Record<string, boolean> }).hiddenSections || {});
+    }
+  };
+
+  const resetDraftForm = () => {
+    setDate(format(new Date(), 'yyyy-MM-dd'));
+    setWorkerStaff(0);
+    setWorkerLaborer(0);
+    setTasks('');
+    setEducation('특이사항 없음');
+    setOthers('특이사항 없음');
+    setHazardsText('');
+    setActionsText('');
+    setChecklist({});
+    setRelatedPhotos([]);
+    setAiSummary('');
+    setManagerSignature('');
+    setDirectorSignature('');
+    setHiddenSections({});
+    setAutoFilledLogDate('');
+  };
+
+  const getCurrentSiteTemplateData = (): SiteTemplateData => ({
+    workerStaff: Number(workerStaff),
+    workerLaborer: Number(workerLaborer),
+    tasks,
+    education,
+    others,
+    hazardsText,
+    actionsText,
+    checklistData: JSON.stringify(checklist),
+    aiSummary,
+    hiddenSections,
+    savedAt: new Date().toISOString(),
+  });
 
   const generateSummary = async () => {
     if (!hazardsText && !actionsText) {
@@ -128,9 +311,50 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
     try {
       const reqId = auth.currentUser?.uid;
       if (reqId) {
+         const preferencesRef = doc(db, 'settings', `daily_log_preferences_${reqId}`);
+         const preferencesSnap = await getDoc(preferencesRef);
+         const nextCopyFieldOptions = preferencesSnap.exists()
+           ? normalizeCopyFieldOptions(preferencesSnap.data()?.copyFieldOptions)
+           : DEFAULT_COPY_FIELD_OPTIONS;
+         const nextSiteTemplates = preferencesSnap.exists()
+           ? normalizeSiteTemplates(preferencesSnap.data()?.siteTemplates)
+           : {};
+         const nextAutoFillEnabled = preferencesSnap.exists()
+           ? preferencesSnap.data()?.autoFillEnabled !== false
+           : true;
+
+         if (mountedRef.current) {
+           setAutoFillEnabled(nextAutoFillEnabled);
+           setCopyFieldOptions(nextCopyFieldOptions);
+           setSiteTemplates(nextSiteTemplates);
+         }
+
          const snap = await getDoc(doc(db, 'settings', `risk_assessment_${reqId}`));
          if (snap.exists() && snap.data()?.items && mountedRef.current) {
              setHighRiskItems(snap.data()?.items);
+         }
+
+         const recentLogsQuery = query(
+           collection(db, 'logs'),
+           where('ownerId', '==', reqId),
+           orderBy('date', 'desc'),
+           limit(7)
+         );
+         const recentLogsSnapshot = await getDocs(recentLogsQuery);
+
+         if (mountedRef.current) {
+           const nextRecentLogs = recentLogsSnapshot.docs.map(logDoc => ({
+             id: logDoc.id,
+             ...logDoc.data(),
+           })) as Array<DailyLog & { id: string }>;
+           setRecentLogs(nextRecentLogs);
+           setSelectedSourceLogId(nextRecentLogs[0]?.id || '');
+
+           if (!autoFilledRef.current && nextAutoFillEnabled && nextRecentLogs[0]) {
+             applyLogToForm(nextRecentLogs[0], { preserveDate: true, clearImages: true, copyFields: nextCopyFieldOptions, overwriteSiteName: false });
+             setAutoFilledLogDate(nextRecentLogs[0].date);
+             autoFilledRef.current = true;
+           }
          }
       }
     } catch(e) {}
@@ -145,24 +369,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
       if (docSnap.exists()) {
         const data = docSnap.data();
         if (!mountedRef.current) return;
-        setDate(data.date);
-        setWorkerStaff(data.workerStaff);
-        setWorkerLaborer(data.workerLaborer);
-        setTasks(data.tasks);
-        setEducation(data.education || '');
-        setOthers(data.others || '');
-        setHazardsText(data.hazardsText || '');
-        setActionsText(data.actionsText || '');
-        setAiSummary(data.aiSummary || '');
-        if (data.checklistData) {
-          setChecklist(JSON.parse(data.checklistData));
-        }
-        if (data.relatedPhotosData) {
-          setRelatedPhotos(JSON.parse(data.relatedPhotosData));
-        }
-        setManagerSignature(data.managerSignature || '');
-        setDirectorSignature(data.directorSignature || '');
-        setHiddenSections(data.hiddenSections || {});
+        applyLogToForm(data as Partial<DailyLog>);
         
         try {
            const reqId = auth.currentUser?.uid;
@@ -182,6 +389,135 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
     }
   };
 
+  const handleCopyPreviousLog = async () => {
+    if (!auth.currentUser || id) return;
+
+    setCopyingPrevious(true);
+    try {
+      const selectedLog = recentLogs.find(log => log.id === selectedSourceLogId) || recentLogs[0];
+
+      if (!selectedLog) {
+        alert('불러올 이전 일지가 없습니다. 먼저 한 건 이상 저장해주세요.');
+        return;
+      }
+
+      applyLogToForm(selectedLog, { preserveDate: true, clearImages: true, copyFields: copyFieldOptions, overwriteSiteName: false });
+      setAutoFilledLogDate(selectedLog.date || '');
+      alert(`${selectedLog.date} 일지 내용을 불러왔습니다. 날짜, 사진, 서명은 제외되었습니다.`);
+    } catch (error) {
+      console.error(error);
+      if (mountedRef.current) {
+        handleFirestoreError(error, 'list', 'logs');
+      }
+    } finally {
+      if (mountedRef.current) {
+        setCopyingPrevious(false);
+      }
+    }
+  };
+
+  const handleAutoFillEnabledChange = async (enabled: boolean) => {
+    setAutoFillEnabled(enabled);
+
+    if (!auth.currentUser) {
+      return;
+    }
+
+    try {
+      await setDoc(doc(db, 'settings', `daily_log_preferences_${auth.currentUser.uid}`), {
+        autoFillEnabled: enabled,
+      }, { merge: true });
+    } catch (error) {
+      console.error(error);
+      if (mountedRef.current) {
+        alert('자동 초안 설정 저장 중 오류가 발생했습니다.');
+        setAutoFillEnabled(!enabled);
+      }
+    }
+  };
+
+  const handleCopyFieldOptionChange = (field: keyof CopyFieldOptions, checked: boolean) => {
+    setCopyFieldOptions(prev => {
+      const nextOptions = { ...prev, [field]: checked };
+
+      if (auth.currentUser) {
+        setDoc(doc(db, 'settings', `daily_log_preferences_${auth.currentUser.uid}`), {
+          copyFieldOptions: nextOptions,
+        }, { merge: true }).catch(error => {
+          console.error(error);
+          if (mountedRef.current) {
+            alert('복사 항목 설정 저장 중 오류가 발생했습니다.');
+          }
+        });
+      }
+
+      return nextOptions;
+    });
+  };
+
+  const handleSaveSiteTemplate = async () => {
+    const trimmedSiteName = siteName.trim();
+    if (!auth.currentUser || !trimmedSiteName) {
+      alert('현장명을 먼저 입력해주세요.');
+      return;
+    }
+
+    const nextTemplate = getCurrentSiteTemplateData();
+    const nextSiteTemplates = {
+      ...siteTemplates,
+      [trimmedSiteName]: nextTemplate,
+    };
+
+    setSavingSiteTemplate(true);
+    try {
+      await setDoc(doc(db, 'settings', `daily_log_preferences_${auth.currentUser.uid}`), {
+        siteTemplates: nextSiteTemplates,
+      }, { merge: true });
+      if (!mountedRef.current) return;
+      setSiteTemplates(nextSiteTemplates);
+      alert(`${trimmedSiteName} 현장 템플릿을 저장했습니다.`);
+    } catch (error) {
+      console.error(error);
+      if (mountedRef.current) {
+        alert('현장 템플릿 저장 중 오류가 발생했습니다.');
+      }
+    } finally {
+      if (mountedRef.current) {
+        setSavingSiteTemplate(false);
+      }
+    }
+  };
+
+  const handleLoadSiteTemplate = async () => {
+    const trimmedSiteName = siteName.trim();
+    if (!trimmedSiteName) {
+      alert('현장명을 먼저 입력해주세요.');
+      return;
+    }
+
+    const template = siteTemplates[trimmedSiteName];
+    if (!template) {
+      alert('현재 현장명으로 저장된 템플릿이 없습니다.');
+      return;
+    }
+
+    setLoadingSiteTemplate(true);
+    try {
+      applyLogToForm(template, {
+        preserveDate: true,
+        clearImages: true,
+        copyFields: copyFieldOptions,
+        overwriteSiteName: false,
+      });
+      if (!mountedRef.current) return;
+      alert(`${trimmedSiteName} 현장 템플릿을 불러왔습니다.`);
+    } finally {
+      if (mountedRef.current) {
+        setLoadingSiteTemplate(false);
+      }
+    }
+  };
+
   const handleSave = async () => {
     if (!auth.currentUser) return;
     setLoading(true);
@@ -192,6 +528,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
       
       const logData = {
         ownerId: auth.currentUser.uid,
+        siteName,
         date,
         workerStaff: Number(workerStaff),
         workerLaborer: Number(workerLaborer),
@@ -464,7 +801,26 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
             <div className="text-xs text-neutral-500 text-right">
               💡 <strong>PDF 출력:</strong> "PDF 출력" 버튼 → 브라우저 인쇄 → "PDF로 저장" 선택
             </div>
-            <div className="space-x-2">
+            <div className="flex flex-wrap justify-end gap-2">
+              {!id && (
+                <button
+                  onClick={resetDraftForm}
+                  disabled={loading || copyingPrevious}
+                  className="inline-flex items-center px-4 py-2 bg-white border border-neutral-300 text-neutral-700 rounded-md font-medium text-sm hover:bg-neutral-50 disabled:opacity-50"
+                >
+                  초안 비우기
+                </button>
+              )}
+              {!id && (
+                <button
+                  onClick={handleCopyPreviousLog}
+                  disabled={copyingPrevious || loading || recentLogs.length === 0}
+                  className="inline-flex items-center px-4 py-2 bg-amber-50 border border-amber-200 text-amber-800 rounded-md font-medium text-sm hover:bg-amber-100 disabled:opacity-50"
+                >
+                  {copyingPrevious ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Sparkles className="w-4 h-4 mr-1.5" />}
+                  선택 일지 불러오기
+                </button>
+              )}
               <button 
                 onClick={() => window.print()}
                 className="inline-flex items-center px-4 py-2 bg-white border border-neutral-300 text-neutral-700 rounded-md font-medium text-sm hover:bg-neutral-50"
@@ -490,6 +846,88 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
         <h3 className="text-sm font-bold text-neutral-800 mb-3 flex items-center">
           <Printer className="w-4 h-4 mr-1.5 text-blue-600" /> 인쇄 및 PDF 출력 항목 설정 (접기/펴기)
         </h3>
+        {!id && (
+          <div className="mb-4 flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <div className="font-semibold">반복 입력이 많다면 이전 일지를 초안으로 활용하세요.</div>
+            {autoFilledLogDate && (
+              <div className="text-xs font-medium text-amber-900">최근 일지 {autoFilledLogDate} 기준으로 기본 초안을 자동 적용했습니다.</div>
+            )}
+            <div className="text-xs font-medium text-amber-900">
+              {siteName.trim() && siteTemplates[siteName.trim()]
+                ? `${siteName.trim()} 현장 템플릿이 저장되어 있습니다.`
+                : '현장명을 입력하면 현장별 템플릿을 따로 저장할 수 있습니다.'}
+            </div>
+            <div className="text-xs text-amber-800">출역인원, 작업내용, 위험요소, 조치내용, 교육/기타, 체크리스트를 복사하고 날짜, 사진, 서명은 오늘 작성 기준으로 비워둡니다.</div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleSaveSiteTemplate}
+                disabled={savingSiteTemplate || !siteName.trim()}
+                className="inline-flex items-center px-3 py-2 rounded-md border border-amber-300 bg-white text-amber-900 text-xs font-semibold hover:bg-amber-100 disabled:opacity-50"
+              >
+                {savingSiteTemplate ? <Loader2 className="w-3 h-3 mr-1.5 animate-spin" /> : null}
+                현재 현장 템플릿 저장
+              </button>
+              <button
+                type="button"
+                onClick={handleLoadSiteTemplate}
+                disabled={loadingSiteTemplate || !siteName.trim() || !siteTemplates[siteName.trim()]}
+                className="inline-flex items-center px-3 py-2 rounded-md border border-amber-300 bg-white text-amber-900 text-xs font-semibold hover:bg-amber-100 disabled:opacity-50"
+              >
+                {loadingSiteTemplate ? <Loader2 className="w-3 h-3 mr-1.5 animate-spin" /> : null}
+                현재 현장 템플릿 불러오기
+              </button>
+            </div>
+            <label className="flex items-center gap-2 text-xs font-medium text-amber-900">
+              <input
+                type="checkbox"
+                checked={autoFillEnabled}
+                onChange={e => handleAutoFillEnabledChange(e.target.checked)}
+                className="rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+              />
+              새 일지 열 때 최근 일지 자동 초안 적용
+            </label>
+            <div className="grid grid-cols-2 gap-2 rounded-md border border-amber-200 bg-white/70 p-3 text-xs text-amber-900 sm:grid-cols-3">
+              {[
+                { key: 'workforce', label: '출역인원' },
+                { key: 'tasks', label: '주요 작업내용' },
+                { key: 'hazards', label: '위험요소/조치' },
+                { key: 'misc', label: '교육/기타' },
+                { key: 'checklist', label: '체크리스트' },
+                { key: 'aiSummary', label: 'AI 요약' },
+              ].map(option => (
+                <label key={option.key} className="flex items-center gap-2 font-medium">
+                  <input
+                    type="checkbox"
+                    checked={copyFieldOptions[option.key as keyof CopyFieldOptions]}
+                    onChange={e => handleCopyFieldOptionChange(option.key as keyof CopyFieldOptions, e.target.checked)}
+                    className="rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+                  />
+                  {option.label}
+                </label>
+              ))}
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <label className="text-xs font-semibold text-amber-900">복사 기준 일지</label>
+              <select
+                value={selectedSourceLogId}
+                onChange={e => setSelectedSourceLogId(e.target.value)}
+                disabled={recentLogs.length === 0}
+                className="min-w-0 flex-1 rounded-md border border-amber-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-amber-400 disabled:opacity-50"
+              >
+                {recentLogs.length === 0 ? (
+                  <option value="">저장된 이전 일지가 없습니다</option>
+                ) : (
+                  recentLogs.map(log => (
+                    <option key={log.id} value={log.id}>
+                      {log.date} {log.tasks ? `- ${log.tasks.slice(0, 20)}` : '- 작업내용 없음'}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+          </div>
+        )}
         <p className="text-xs text-neutral-500 mb-4">체크를 해제하면 인쇄 및 PDF 저장 시 해당 항목이 제외됩니다. (종이 절약 및 선택적 보고용)</p>
         <div className="flex flex-wrap gap-2">
           {[
@@ -526,6 +964,16 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
             <h3 className="font-bold text-slate-800 text-sm">기본 정보</h3>
           </div>
           <div className="p-4 space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5">현장명</label>
+              <input
+                type="text"
+                value={siteName}
+                onChange={e => setSiteName(e.target.value)}
+                className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-base outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="예: A동 외벽공사 현장"
+              />
+            </div>
             <div>
               <label className="block text-xs font-semibold text-slate-500 mb-1.5">일 자</label>
               <input
@@ -994,6 +1442,18 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
            </div>
         ) : (
           <div className="flex flex-col">
+            <div className="flex border-b-2 border-black">
+              <div className="w-24 flex items-center justify-center border-r-2 border-black font-semibold shrink-0">현장명</div>
+              <div className="flex-1 p-2">
+                <input
+                  type="text"
+                  value={siteName}
+                  onChange={e => setSiteName(e.target.value)}
+                  className="w-full p-1 border border-neutral-300 rounded print:border-0 text-base outline-none"
+                  placeholder="현장명을 입력하세요..."
+                />
+              </div>
+            </div>
             {/* Date Row */}
             <div className="flex border-b-2 border-black">
               <div className="w-24 flex items-center justify-center border-r-2 border-black font-semibold shrink-0">일 자</div>
