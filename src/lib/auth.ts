@@ -36,7 +36,7 @@ export const auth = {
   },
 };
 
-export { auth, db };
+export { db };
 
 interface AuthState {
   user: LocalUser | null;

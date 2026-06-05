@@ -600,10 +600,12 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
     try {
       const logId = id || doc(collection(db, 'logs')).id;
       const logRef = doc(db, 'logs', logId);
+      const checklistItems = Object.values(checklist) as ChecklistData[string][];
+      const checklistEntryPairs = Object.entries(checklist) as Array<[string, ChecklistData[string]]>;
 
       const hasDataUrl = (value?: string) => !!value && value.startsWith('data:');
       const uploadTargetsTotal = [
-        ...Object.values(checklist).map(item => hasDataUrl(item.photoUrl) ? 1 : 0),
+        ...checklistItems.map(item => hasDataUrl(item.photoUrl) ? 1 : 0),
         ...relatedPhotos.map(photo => hasDataUrl(photo.imageUrl) ? 1 : 0),
         hasDataUrl(managerSignature) ? 1 : 0,
         hasDataUrl(directorSignature) ? 1 : 0,
@@ -622,7 +624,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
       setSaveStage('사진 업로드 준비');
 
       const checklistEntriesPromise = Promise.all(
-        Object.entries(checklist).map(async ([itemId, itemValue]) => [
+        checklistEntryPairs.map(async ([itemId, itemValue]) => [
           itemId,
           {
             ...itemValue,

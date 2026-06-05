@@ -375,7 +375,8 @@ export default function DailyLogList() {
           return;
       }
       try {
-          for (const id of Array.from(selectedLogs)) {
+          const selectedLogIds = Array.from(selectedLogs.values()) as string[];
+          for (const id of selectedLogIds) {
               await deleteDoc(doc(db, 'logs', id));
           }
           setSelectedLogs(new Set());
