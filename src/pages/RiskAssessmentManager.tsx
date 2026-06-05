@@ -4,6 +4,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { GoogleGenAI } from '@google/genai';
 import { Shield, Upload, Loader2, Save, Trash2, Camera, Info } from 'lucide-react';
 import { HIGH_RISK_ASSESSMENTS } from '../lib/checklistTypes';
+import { useRef } from 'react';
 
 interface RiskItem {
   id: string;
@@ -18,13 +19,16 @@ export default function RiskAssessmentManager() {
   const [saving, setSaving] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
+    mountedRef.current = true;
     if (!auth.currentUser) return;
     const fetchRiskAssessment = async () => {
       try {
         const docRef = doc(db, 'settings', `risk_assessment_${auth.currentUser?.uid}`);
         const snap = await getDoc(docRef);
+        if (!mountedRef.current) return;
         if (snap.exists() && snap.data().items) {
           setItems(snap.data().items);
           setLastUpdated(snap.data().updatedAt || null);
@@ -40,10 +44,15 @@ export default function RiskAssessmentManager() {
       } catch (err) {
         console.error(err);
       } finally {
-        setLoading(false);
+        if (mountedRef.current) {
+          setLoading(false);
+        }
       }
     };
     fetchRiskAssessment();
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
   const handleSave = async () => {
@@ -133,7 +142,9 @@ export default function RiskAssessmentManager() {
       console.error(error);
       alert('OCR 분석 중 오류가 발생했습니다.');
     } finally {
-      setAnalyzing(false);
+      if (mountedRef.current) {
+        setAnalyzing(false);
+      }
       if (e.target) e.target.value = '';
     }
   };

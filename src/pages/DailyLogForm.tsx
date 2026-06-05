@@ -20,6 +20,8 @@ type CopyFieldOptions = {
   aiSummary: boolean;
 };
 
+type AttachmentMode = 'optimized' | 'original';
+
 const DEFAULT_COPY_FIELD_OPTIONS: CopyFieldOptions = {
   workforce: true,
   tasks: true,
@@ -76,6 +78,15 @@ const normalizeSiteTemplates = (value: unknown): Record<string, SiteTemplateData
   }, {});
 };
 
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve(e.target?.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 function captureAndCompressImage(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -100,12 +111,10 @@ function captureAndCompressImage(file: File): Promise<string> {
           ctx.fillRect(0, 0, width, height);
           ctx.drawImage(img, 0, 0, width, height);
         }
-        // 메모리 해제: src 초기화로 브라우저 이미지 캐시 참조 제거
         img.src = '';
         triggerHaptic('success');
         resolve(canvas.toDataURL('image/jpeg', 0.8));
       };
-      // onerror 미설정 시 Promise 영구 대기(메모리 누수) → reject로 명시 해제
       img.onerror = () => {
         img.src = '';
         reject(new Error('이미지 로드 실패'));
@@ -115,6 +124,16 @@ function captureAndCompressImage(file: File): Promise<string> {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+async function prepareAttachmentImage(file: File, mode: AttachmentMode): Promise<string> {
+  if (mode === 'original') {
+    const dataUrl = await readFileAsDataUrl(file);
+    triggerHaptic('success');
+    return dataUrl;
+  }
+
+  return captureAndCompressImage(file);
 }
 
 async function persistImageAsset(imageValue: string, storagePath: string): Promise<string> {
@@ -142,6 +161,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
   const [siteTemplates, setSiteTemplates] = useState<Record<string, SiteTemplateData>>({});
   const [savingSiteTemplate, setSavingSiteTemplate] = useState(false);
   const [loadingSiteTemplate, setLoadingSiteTemplate] = useState(false);
+  const [attachmentMode, setAttachmentMode] = useState<AttachmentMode>('optimized');
 
   const [highRiskItems, setHighRiskItems] = useState(HIGH_RISK_ASSESSMENTS);
 
@@ -638,27 +658,48 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
   const handleChecklistPhotoUpload = async (id: string, e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       try {
-        const compressedBase64 = await captureAndCompressImage(e.target.files[0]);
-        handleChecklistChange(id, 'photoUrl', compressedBase64);
+        const nextImage = await prepareAttachmentImage(e.target.files[0], attachmentMode);
+        handleChecklistChange(id, 'photoUrl', nextImage);
       } catch (err) {
         console.error("Image compression failed", err);
+      } finally {
+        e.target.value = '';
       }
     }
+  };
+
+  const handleChecklistPhotoReplace = async (id: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    await handleChecklistPhotoUpload(id, e);
   };
 
   const addRelatedPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       try {
-        const compressedBase64 = await captureAndCompressImage(e.target.files[0]);
+        const nextImage = await prepareAttachmentImage(e.target.files[0], attachmentMode);
         setRelatedPhotos(prev => [...prev, {
           id: Date.now().toString(),
           date: format(new Date(), 'MM/dd'),
           location: '',
           issue: '',
-          imageUrl: compressedBase64
+          imageUrl: nextImage
         }]);
       } catch (err) {
         console.error("Image compression failed", err);
+      } finally {
+        e.target.value = '';
+      }
+    }
+  };
+
+  const replaceRelatedPhotoImage = async (photoId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      try {
+        const nextImage = await prepareAttachmentImage(e.target.files[0], attachmentMode);
+        setRelatedPhotos(prev => prev.map(photo => photo.id === photoId ? { ...photo, imageUrl: nextImage } : photo));
+      } catch (err) {
+        console.error('Image compression failed', err);
+      } finally {
+        e.target.value = '';
       }
     }
   };
@@ -782,6 +823,10 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
                 {val.photoUrl ? (
                   <div className="relative group w-full h-full min-h-[100px] flex items-center justify-center overflow-hidden">
                     <img src={val.photoUrl} alt="Inspection" className="max-w-full max-h-full object-contain" />
+                    <label className="absolute top-1 left-1 bg-white/90 text-slate-700 px-2 py-1 rounded-full text-[10px] font-semibold shadow cursor-pointer hover:bg-white print:hidden opacity-0 group-hover:opacity-100 transition-opacity">
+                      수정
+                      <input type="file" accept="image/*" capture="environment" className="hidden" onChange={e => handleChecklistPhotoReplace(item.id, e)} />
+                    </label>
                     <button 
                       onClick={() => handleChecklistChange(item.id, 'photoUrl', '')}
                       className="absolute top-1 right-1 bg-red-500 text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity print:hidden shadow"
@@ -1209,12 +1254,31 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="bg-slate-50 px-4 py-3 border-b border-slate-100 flex items-center justify-between">
             <h3 className="font-bold text-slate-800 text-sm">관련 사진</h3>
-            <label className="flex items-center px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold cursor-pointer">
-              <Plus className="w-3.5 h-3.5 mr-1" /> 사진추가
-              <input type="file" accept="image/*" capture="environment" className="hidden" onChange={addRelatedPhoto} />
-            </label>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center rounded-lg border border-slate-200 bg-white p-1 text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setAttachmentMode('optimized')}
+                  className={`px-2.5 py-1 rounded-md transition-colors ${attachmentMode === 'optimized' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                  최적화
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAttachmentMode('original')}
+                  className={`px-2.5 py-1 rounded-md transition-colors ${attachmentMode === 'original' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                  원본
+                </button>
+              </div>
+              <label className="flex items-center px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold cursor-pointer">
+                <Plus className="w-3.5 h-3.5 mr-1" /> 사진추가
+                <input type="file" accept="image/*" capture="environment" className="hidden" onChange={addRelatedPhoto} />
+              </label>
+            </div>
           </div>
           <div className="p-4 space-y-4">
+            <p className="text-xs text-slate-500 -mt-1">기본은 최적화 모드입니다. 사진별로 수정 버튼을 눌러 다시 첨부할 수 있습니다.</p>
             {relatedPhotos.length === 0 && (
               <div className="text-center py-8 text-slate-400 text-sm">
                 <Camera className="w-8 h-8 mx-auto mb-2 opacity-40" />
@@ -1228,6 +1292,10 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
                     ? <img src={photo.imageUrl} alt="현장사진" className="absolute inset-0 w-full h-full object-contain" />
                     : <div className="absolute inset-0 flex items-center justify-center text-neutral-400 text-sm">사진 없음</div>
                   }
+                  <label className="absolute top-2 left-2 bg-white/90 text-slate-700 px-2.5 py-1 rounded-full text-xs font-semibold shadow cursor-pointer hover:bg-white">
+                    수정
+                    <input type="file" accept="image/*" capture="environment" className="hidden" onChange={e => replaceRelatedPhotoImage(photo.id, e)} />
+                  </label>
                   <button
                     onClick={() => removeRelatedPhoto(photo.id)}
                     className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full shadow"
@@ -1367,9 +1435,13 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
                           {val.photoUrl ? (
                             <div className="relative rounded-xl overflow-hidden border border-slate-200">
                               <img src={val.photoUrl} alt="점검사진" className="w-full object-contain max-h-48" />
+                              <label className="absolute top-2 left-2 bg-white/90 text-slate-700 px-2.5 py-1 rounded-full text-xs font-semibold shadow cursor-pointer hover:bg-white print:hidden">
+                                수정
+                                <input type="file" accept="image/*" capture="environment" className="hidden" onChange={e => handleChecklistPhotoReplace(item.id, e)} />
+                              </label>
                               <button
                                 onClick={() => handleChecklistChange(item.id, 'photoUrl', '')}
-                                className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full shadow"
+                                className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full shadow print:hidden"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>

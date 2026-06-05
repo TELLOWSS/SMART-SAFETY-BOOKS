@@ -25,10 +25,11 @@ export default function DailyLogPrintView({ logId }: Props) {
 
   useEffect(() => {
     mountedRef.current = true;
+    let unsubscribeAuth: (() => void) | undefined;
     const load = async () => {
       if (!logId) return;
       // auth 가 아직 초기화되지 않았을 수 있으므로 onAuthStateChanged로 안전하게 대기
-      const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
+      unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
         if (!user || !mountedRef.current) return;
         unsubscribeAuth(); // 한 번만 실행
         try {
@@ -57,6 +58,9 @@ export default function DailyLogPrintView({ logId }: Props) {
     load();
     return () => {
       mountedRef.current = false;
+      if (unsubscribeAuth) {
+        unsubscribeAuth();
+      }
     };
   }, [logId]);
 
