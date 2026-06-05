@@ -3,9 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, getDocs, setDoc, updateDoc, serverTimestamp, collection, query, where, orderBy, limit } from 'firebase/firestore';
 import { db, auth, handleFirestoreError } from '../lib/auth';
 import { DailyLog, ChecklistData, RelatedPhoto } from '../lib/types';
+import { storage } from '../lib/firebase';
 import { MUST_DO_GUIDELINES, FIVE_PROHIBITIONS, HIGH_RISK_ASSESSMENTS, PTW_INSPECTION } from '../lib/checklistTypes';
 import { ArrowLeft, Save, Sparkles, Loader2, Camera, Plus, Trash2, Printer, ChevronDown, ChevronUp, MinusCircle } from 'lucide-react';
 import { format } from 'date-fns';
+import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 
 import { triggerHaptic } from '../lib/haptic';
 
@@ -113,6 +115,15 @@ function captureAndCompressImage(file: File): Promise<string> {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+async function persistImageAsset(imageValue: string, storagePath: string): Promise<string> {
+  if (!imageValue) return '';
+  if (!imageValue.startsWith('data:')) return imageValue;
+
+  const imageRef = ref(storage, storagePath);
+  await uploadString(imageRef, imageValue, 'data_url');
+  return getDownloadURL(imageRef);
 }
 
 export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
@@ -525,6 +536,36 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
     try {
       const logId = id || doc(collection(db, 'logs')).id;
       const logRef = doc(db, 'logs', logId);
+
+      const checklistEntries = await Promise.all(
+        Object.entries(checklist).map(async ([itemId, itemValue]) => [
+          itemId,
+          {
+            ...itemValue,
+            photoUrl: await persistImageAsset(
+              itemValue.photoUrl || '',
+              `daily-logs/${auth.currentUser!.uid}/${logId}/checklist/${itemId}`
+            ),
+          },
+        ])
+      );
+      const relatedPhotosToSave = await Promise.all(
+        relatedPhotos.map(async (photo, index) => ({
+          ...photo,
+          imageUrl: await persistImageAsset(
+            photo.imageUrl,
+            `daily-logs/${auth.currentUser!.uid}/${logId}/related-photos/${photo.id || index}`
+          ),
+        }))
+      );
+      const managerSignatureToSave = await persistImageAsset(
+        managerSignature,
+        `daily-logs/${auth.currentUser!.uid}/${logId}/signatures/manager`
+      );
+      const directorSignatureToSave = await persistImageAsset(
+        directorSignature,
+        `daily-logs/${auth.currentUser!.uid}/${logId}/signatures/director`
+      );
       
       const logData = {
         ownerId: auth.currentUser.uid,
@@ -537,11 +578,11 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
         others,
         hazardsText,
         actionsText,
-        checklistData: JSON.stringify(checklist),
-        relatedPhotosData: JSON.stringify(relatedPhotos),
+        checklistData: JSON.stringify(Object.fromEntries(checklistEntries) as ChecklistData),
+        relatedPhotosData: JSON.stringify(relatedPhotosToSave),
         aiSummary,
-        managerSignature,
-        directorSignature,
+        managerSignature: managerSignatureToSave,
+        directorSignature: directorSignatureToSave,
         hiddenSections,
       };
 
