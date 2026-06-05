@@ -136,13 +136,59 @@ async function prepareAttachmentImage(file: File, mode: AttachmentMode): Promise
   return captureAndCompressImage(file);
 }
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timerId = window.setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, timeoutMs);
+
+    promise
+      .then((value) => {
+        window.clearTimeout(timerId);
+        resolve(value);
+      })
+      .catch((error) => {
+        window.clearTimeout(timerId);
+        reject(error);
+      });
+  });
+}
+
+async function withRetry<T>(task: () => Promise<T>, maxAttempts: number, retryDelayMs: number): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await task();
+    } catch (error) {
+      lastError = error;
+      if (attempt >= maxAttempts) {
+        break;
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, retryDelayMs));
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('업로드 재시도에 실패했습니다.');
+}
+
 async function persistImageAsset(imageValue: string, storagePath: string): Promise<string> {
   if (!imageValue) return '';
   if (!imageValue.startsWith('data:')) return imageValue;
 
   const imageRef = ref(storage, storagePath);
-  await uploadString(imageRef, imageValue, 'data_url');
-  return getDownloadURL(imageRef);
+  return withRetry(
+    () => withTimeout(
+      (async () => {
+        await uploadString(imageRef, imageValue, 'data_url');
+        return getDownloadURL(imageRef);
+      })(),
+      60000,
+      '사진 업로드 시간이 초과되었습니다. 네트워크 상태를 확인하거나 사진 개수를 줄인 뒤 다시 저장해주세요.'
+    ),
+    2,
+    1200
+  );
 }
 
 export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
@@ -558,6 +604,10 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
 
   const handleSave = async () => {
     if (!auth.currentUser) return;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      alert('오프라인 상태입니다. 네트워크 연결 후 다시 저장해주세요.');
+      return;
+    }
     setLoading(true);
     setSaveProgress(5);
     setSaveStage('저장 준비 중');
@@ -565,6 +615,23 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
     try {
       const logId = id || doc(collection(db, 'logs')).id;
       const logRef = doc(db, 'logs', logId);
+
+      const hasDataUrl = (value?: string) => !!value && value.startsWith('data:');
+      const uploadTargetsTotal = [
+        ...Object.values(checklist).map(item => hasDataUrl(item.photoUrl) ? 1 : 0),
+        ...relatedPhotos.map(photo => hasDataUrl(photo.imageUrl) ? 1 : 0),
+        hasDataUrl(managerSignature) ? 1 : 0,
+        hasDataUrl(directorSignature) ? 1 : 0,
+      ].reduce((acc, curr) => acc + curr, 0);
+      let uploadedCount = 0;
+      const markUploadProgress = () => {
+        uploadedCount += 1;
+        if (!mountedRef.current || uploadTargetsTotal <= 0) return;
+        const ratio = uploadedCount / uploadTargetsTotal;
+        const nextProgress = Math.min(74, 40 + Math.round(ratio * 34));
+        setSaveProgress(nextProgress);
+        setSaveStage(`사진 업로드 중 (${uploadedCount}/${uploadTargetsTotal})`);
+      };
 
       setSaveProgress(20);
       setSaveStage('사진 업로드 준비');
@@ -577,7 +644,10 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
             photoUrl: await persistImageAsset(
               itemValue.photoUrl || '',
               `daily-logs/${auth.currentUser!.uid}/${logId}/checklist/${itemId}`
-            ),
+            ).then((value) => {
+              if (hasDataUrl(itemValue.photoUrl)) markUploadProgress();
+              return value;
+            }),
           },
         ])
       );
@@ -587,20 +657,29 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
           imageUrl: await persistImageAsset(
             photo.imageUrl,
             `daily-logs/${auth.currentUser!.uid}/${logId}/related-photos/${photo.id || index}`
-          ),
+          ).then((value) => {
+            if (hasDataUrl(photo.imageUrl)) markUploadProgress();
+            return value;
+          }),
         }))
       );
       const managerSignaturePromise = persistImageAsset(
         managerSignature,
         `daily-logs/${auth.currentUser!.uid}/${logId}/signatures/manager`
-      );
+      ).then((value) => {
+        if (hasDataUrl(managerSignature)) markUploadProgress();
+        return value;
+      });
       const directorSignaturePromise = persistImageAsset(
         directorSignature,
         `daily-logs/${auth.currentUser!.uid}/${logId}/signatures/director`
-      );
+      ).then((value) => {
+        if (hasDataUrl(directorSignature)) markUploadProgress();
+        return value;
+      });
 
       setSaveProgress(40);
-      setSaveStage('사진 업로드 중');
+      setSaveStage(uploadTargetsTotal > 0 ? `사진 업로드 중 (0/${uploadTargetsTotal})` : '사진 업로드 중');
 
       const [checklistEntries, relatedPhotosToSave, managerSignatureToSave, directorSignatureToSave] = await Promise.all([
         checklistEntriesPromise,
@@ -644,13 +723,21 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
       setSaveStage('최종 저장 중');
 
       if (id) {
-        await updateDoc(logRef, { ...logData, updatedAt: serverTimestamp() });
+        await withTimeout(
+          updateDoc(logRef, { ...logData, updatedAt: serverTimestamp() }),
+          30000,
+          '문서 저장 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.'
+        );
       } else {
-        await setDoc(logRef, { 
-          ...logData, 
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp() 
-        });
+        await withTimeout(
+          setDoc(logRef, {
+            ...logData,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          }),
+          30000,
+          '문서 저장 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.'
+        );
       }
 
       if (!mountedRef.current) return;
@@ -667,7 +754,12 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
       }
     } catch (error) {
       console.error(error);
-      if (mountedRef.current) handleFirestoreError(error, 'write', 'logs');
+      if (mountedRef.current) {
+        handleFirestoreError(error, 'write', 'logs');
+        if (error instanceof Error && error.message) {
+          alert(error.message);
+        }
+      }
     } finally {
       if (mountedRef.current) setLoading(false);
       if (saveResetTimerRef.current !== null) {
