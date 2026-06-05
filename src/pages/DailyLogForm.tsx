@@ -162,6 +162,8 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
   const [savingSiteTemplate, setSavingSiteTemplate] = useState(false);
   const [loadingSiteTemplate, setLoadingSiteTemplate] = useState(false);
   const [attachmentMode, setAttachmentMode] = useState<AttachmentMode>('optimized');
+  const [saveProgress, setSaveProgress] = useState(0);
+  const [saveStage, setSaveStage] = useState('저장 준비 중');
 
   const [highRiskItems, setHighRiskItems] = useState(HIGH_RISK_ASSESSMENTS);
 
@@ -189,6 +191,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
   // 언마운트 감지 ref — 비동기 작업 후 setState 방지(메모리 누수 차단)
   const mountedRef = useRef(true);
   const autoFilledRef = useRef(false);
+  const saveResetTimerRef = useRef<number | null>(null);
 
   const applyLogToForm = (data: Partial<DailyLog>, options?: { preserveDate?: boolean; clearImages?: boolean; copyFields?: CopyFieldOptions; overwriteSiteName?: boolean }) => {
     const preserveDate = options?.preserveDate ?? false;
@@ -334,6 +337,10 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
     });
     return () => {
       mountedRef.current = false;
+      if (saveResetTimerRef.current !== null) {
+        window.clearTimeout(saveResetTimerRef.current);
+        saveResetTimerRef.current = null;
+      }
       unsubscribe();
     };
   }, [id]);
@@ -552,12 +559,17 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
   const handleSave = async () => {
     if (!auth.currentUser) return;
     setLoading(true);
+    setSaveProgress(5);
+    setSaveStage('저장 준비 중');
     
     try {
       const logId = id || doc(collection(db, 'logs')).id;
       const logRef = doc(db, 'logs', logId);
 
-      const checklistEntries = await Promise.all(
+      setSaveProgress(20);
+      setSaveStage('사진 업로드 준비');
+
+      const checklistEntriesPromise = Promise.all(
         Object.entries(checklist).map(async ([itemId, itemValue]) => [
           itemId,
           {
@@ -569,7 +581,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
           },
         ])
       );
-      const relatedPhotosToSave = await Promise.all(
+      const relatedPhotosPromise = Promise.all(
         relatedPhotos.map(async (photo, index) => ({
           ...photo,
           imageUrl: await persistImageAsset(
@@ -578,14 +590,29 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
           ),
         }))
       );
-      const managerSignatureToSave = await persistImageAsset(
+      const managerSignaturePromise = persistImageAsset(
         managerSignature,
         `daily-logs/${auth.currentUser!.uid}/${logId}/signatures/manager`
       );
-      const directorSignatureToSave = await persistImageAsset(
+      const directorSignaturePromise = persistImageAsset(
         directorSignature,
         `daily-logs/${auth.currentUser!.uid}/${logId}/signatures/director`
       );
+
+      setSaveProgress(40);
+      setSaveStage('사진 업로드 중');
+
+      const [checklistEntries, relatedPhotosToSave, managerSignatureToSave, directorSignatureToSave] = await Promise.all([
+        checklistEntriesPromise,
+        relatedPhotosPromise,
+        managerSignaturePromise,
+        directorSignaturePromise,
+      ]);
+
+      setSaveProgress(75);
+      setSaveStage('문서 저장 중');
+
+      const normalizedChecklist = Object.fromEntries(checklistEntries) as ChecklistData;
       
       const logData = {
         ownerId: auth.currentUser.uid,
@@ -598,7 +625,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
         others,
         hazardsText,
         actionsText,
-        checklistData: JSON.stringify(Object.fromEntries(checklistEntries) as ChecklistData),
+        checklistData: JSON.stringify(normalizedChecklist),
         relatedPhotosData: JSON.stringify(relatedPhotosToSave),
         aiSummary,
         managerSignature: managerSignatureToSave,
@@ -613,6 +640,9 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
         return;
       }
 
+      setSaveProgress(90);
+      setSaveStage('최종 저장 중');
+
       if (id) {
         await updateDoc(logRef, { ...logData, updatedAt: serverTimestamp() });
       } else {
@@ -624,6 +654,12 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
       }
 
       if (!mountedRef.current) return;
+      setChecklist(normalizedChecklist);
+      setRelatedPhotos(relatedPhotosToSave);
+      setManagerSignature(managerSignatureToSave);
+      setDirectorSignature(directorSignatureToSave);
+      setSaveProgress(100);
+      setSaveStage('저장 완료');
       if (!id) {
         navigate(`/logs/${logId}`);
       } else {
@@ -634,6 +670,16 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
       if (mountedRef.current) handleFirestoreError(error, 'write', 'logs');
     } finally {
       if (mountedRef.current) setLoading(false);
+      if (saveResetTimerRef.current !== null) {
+        window.clearTimeout(saveResetTimerRef.current);
+      }
+      saveResetTimerRef.current = window.setTimeout(() => {
+        if (mountedRef.current) {
+          setSaveProgress(0);
+          setSaveStage('저장 준비 중');
+        }
+        saveResetTimerRef.current = null;
+      }, 500);
     }
   };
 
@@ -927,9 +973,23 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
                 className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md font-medium text-sm hover:bg-blue-700 disabled:opacity-50"
               >
                 {loading ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Save className="w-4 h-4 mr-1.5" />}
-                저장하기
+                {loading ? '저장 중' : '저장하기'}
               </button>
             </div>
+            {loading && (
+              <div className="mt-3 ml-auto w-full max-w-sm rounded-md border border-blue-100 bg-blue-50 px-3 py-2">
+                <div className="mb-1 flex items-center justify-between text-[11px] font-semibold text-blue-700">
+                  <span>{saveStage}</span>
+                  <span>{saveProgress}%</span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-blue-100">
+                  <div
+                    className="h-full rounded-full bg-blue-600 transition-all duration-300 ease-out"
+                    style={{ width: `${saveProgress}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

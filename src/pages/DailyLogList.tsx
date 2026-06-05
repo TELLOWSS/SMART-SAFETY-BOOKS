@@ -5,6 +5,8 @@ import { DailyLog } from '../lib/types';
 import { Link, useNavigate } from 'react-router-dom';
 import { Plus, FileText, ChevronRight, Download, Upload, Printer, Calendar, Trash2 } from 'lucide-react';
 import { setDoc, doc } from 'firebase/firestore';
+import { ref, uploadString, getDownloadURL } from 'firebase/storage';
+import { storage } from '../lib/firebase';
 
 type BackupPayload = {
   version: number;
@@ -12,6 +14,140 @@ type BackupPayload = {
   ownerId: string;
   total: number;
   logs: DailyLog[];
+};
+
+type BackupChecklistItem = {
+  photoUrl?: string;
+  [key: string]: any;
+};
+
+type BackupRelatedPhoto = {
+  imageUrl?: string;
+  [key: string]: any;
+};
+
+const isDataUrl = (value: string) => value.startsWith('data:');
+
+const readBlobAsDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(reader.result as string);
+  reader.onerror = reject;
+  reader.readAsDataURL(blob);
+});
+
+const convertRemoteImageToDataUrl = async (url: string) => {
+  if (!url) return '';
+  if (isDataUrl(url)) return url;
+
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`이미지 다운로드 실패: ${response.status}`);
+  }
+
+  const blob = await response.blob();
+  return readBlobAsDataUrl(blob);
+};
+
+const prepareChecklistDataForBackup = async (checklistData: string) => {
+  if (!checklistData) return checklistData;
+
+  try {
+    const checklist = JSON.parse(checklistData) as Record<string, BackupChecklistItem>;
+    const nextChecklist = await Promise.all(
+      Object.entries(checklist).map(async ([itemId, item]) => [
+        itemId,
+        {
+          ...item,
+          photoUrl: item.photoUrl ? await convertRemoteImageToDataUrl(item.photoUrl) : '',
+        },
+      ])
+    );
+    return JSON.stringify(Object.fromEntries(nextChecklist));
+  } catch {
+    return checklistData;
+  }
+};
+
+const prepareRelatedPhotosDataForBackup = async (relatedPhotosData: string) => {
+  if (!relatedPhotosData) return relatedPhotosData;
+
+  try {
+    const relatedPhotos = JSON.parse(relatedPhotosData) as BackupRelatedPhoto[];
+    const nextPhotos = await Promise.all(
+      relatedPhotos.map(async photo => ({
+        ...photo,
+        imageUrl: photo.imageUrl ? await convertRemoteImageToDataUrl(photo.imageUrl) : '',
+      }))
+    );
+    return JSON.stringify(nextPhotos);
+  } catch {
+    return relatedPhotosData;
+  }
+};
+
+const prepareLogForBackup = async (log: DailyLog) => ({
+  ...log,
+  checklistData: await prepareChecklistDataForBackup(log.checklistData),
+  relatedPhotosData: await prepareRelatedPhotosDataForBackup(log.relatedPhotosData),
+  managerSignature: log.managerSignature ? await convertRemoteImageToDataUrl(log.managerSignature) : '',
+  directorSignature: log.directorSignature ? await convertRemoteImageToDataUrl(log.directorSignature) : '',
+});
+
+const uploadImageDataUrl = async (value: string, storagePath: string) => {
+  if (!value) return '';
+  if (!isDataUrl(value)) return value;
+
+  const imageRef = ref(storage, storagePath);
+  await uploadString(imageRef, value, 'data_url');
+  return getDownloadURL(imageRef);
+};
+
+const restoreChecklistData = async (checklistData: string, logId: string, ownerId: string) => {
+  if (!checklistData) return checklistData;
+
+  try {
+    const checklist = JSON.parse(checklistData) as Record<string, BackupChecklistItem>;
+    const nextChecklist = await Promise.all(
+      Object.entries(checklist).map(async ([itemId, item]) => [
+        itemId,
+        {
+          ...item,
+          photoUrl: await uploadImageDataUrl(
+            item.photoUrl || '',
+            `daily-logs/${ownerId}/${logId}/checklist/${itemId}`
+          ),
+        },
+      ])
+    );
+    return JSON.stringify(Object.fromEntries(nextChecklist));
+  } catch {
+    return checklistData;
+  }
+};
+
+const restoreRelatedPhotosData = async (relatedPhotosData: string, logId: string, ownerId: string) => {
+  if (!relatedPhotosData) return relatedPhotosData;
+
+  try {
+    const relatedPhotos = JSON.parse(relatedPhotosData) as BackupRelatedPhoto[];
+    const nextPhotos = await Promise.all(
+      relatedPhotos.map(async (photo, index) => ({
+        ...photo,
+        imageUrl: await uploadImageDataUrl(
+          photo.imageUrl || '',
+          `daily-logs/${ownerId}/${logId}/related-photos/${photo.id || index}`
+        ),
+      }))
+    );
+    return JSON.stringify(nextPhotos);
+  } catch {
+    return relatedPhotosData;
+  }
+};
+
+const restoreImageField = async (value: string | undefined, storagePath: string) => {
+  if (!value) return '';
+  return uploadImageDataUrl(value, storagePath);
 };
 
 const createRestoreLogId = () => {
@@ -94,28 +230,36 @@ export default function DailyLogList() {
     };
   }, []);
 
-  const handleBackup = () => {
+  const handleBackup = async () => {
     const ownerId = auth.currentUser?.uid;
     if (!ownerId) {
       alert('로그인 정보가 확인되지 않아 백업할 수 없습니다.');
       return;
     }
 
-    const payload: BackupPayload = {
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      ownerId,
-      total: logs.length,
-      logs,
-    };
+    try {
+      const logsWithAssets = await Promise.all(logs.map(log => prepareLogForBackup(log)));
 
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(payload));
-    const downloadAnchorNode = document.createElement('a');
-    downloadAnchorNode.setAttribute("href", dataStr);
-    downloadAnchorNode.setAttribute("download", `daily_logs_backup_${new Date().getTime()}.json`);
-    document.body.appendChild(downloadAnchorNode);
-    downloadAnchorNode.click();
-    downloadAnchorNode.remove();
+      const payload: BackupPayload = {
+        version: 2,
+        exportedAt: new Date().toISOString(),
+        ownerId,
+        total: logs.length,
+        logs: logsWithAssets,
+      };
+
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(payload));
+      const downloadAnchorNode = document.createElement('a');
+      downloadAnchorNode.setAttribute("href", dataStr);
+      downloadAnchorNode.setAttribute("download", `daily_logs_backup_${new Date().getTime()}.json`);
+      document.body.appendChild(downloadAnchorNode);
+      downloadAnchorNode.click();
+      downloadAnchorNode.remove();
+      alert(`백업이 완료되었습니다. (${logsWithAssets.length}건, 사진 포함)`);
+    } catch (error) {
+      console.error(error);
+      alert('백업 중 사진을 포함하는 과정에서 오류가 발생했습니다. 사진 URL에 접근할 수 없는 항목이 있을 수 있습니다.');
+    }
   };
 
   const handleRestore = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -150,7 +294,18 @@ export default function DailyLogList() {
             const normalizedLog = normalizeLogForRestore(log, ownerId);
             const logId = normalizedLog.id;
             const logRef = doc(db, 'logs', logId);
-            await setDoc(logRef, normalizedLog, { merge: true });
+            const checklistData = await restoreChecklistData(normalizedLog.checklistData, logId, ownerId);
+            const relatedPhotosData = await restoreRelatedPhotosData(normalizedLog.relatedPhotosData, logId, ownerId);
+            const managerSignature = await restoreImageField(normalizedLog.managerSignature, `daily-logs/${ownerId}/${logId}/signatures/manager`);
+            const directorSignature = await restoreImageField(normalizedLog.directorSignature, `daily-logs/${ownerId}/${logId}/signatures/director`);
+
+            await setDoc(logRef, {
+              ...normalizedLog,
+              checklistData,
+              relatedPhotosData,
+              managerSignature,
+              directorSignature,
+            }, { merge: true });
             successCount += 1;
           } catch (restoreError) {
             failedCount += 1;
