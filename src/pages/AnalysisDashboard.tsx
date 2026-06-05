@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, query, orderBy, getDocs } from 'firebase/firestore';
+import { collection, query, orderBy, getDocs, where } from 'firebase/firestore';
 import { db, auth, handleFirestoreError } from '../lib/auth';
 import { DailyLog, ChecklistData } from '../lib/types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Cell } from 'recharts';
@@ -23,7 +23,17 @@ export default function AnalysisDashboard() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const q = query(collection(db, 'logs'), orderBy('date', 'desc'));
+      const ownerId = auth.currentUser?.uid;
+      if (!ownerId) {
+        setLogs([]);
+        return;
+      }
+
+      const q = query(
+        collection(db, 'logs'),
+        where('ownerId', '==', ownerId),
+        orderBy('date', 'desc')
+      );
       const snapshot = await getDocs(q);
       if (!mountedRef.current) return;
       const logData: DailyLog[] = [];

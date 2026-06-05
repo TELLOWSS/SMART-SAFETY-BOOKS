@@ -1,10 +1,49 @@
 import React, { useEffect, useState } from 'react';
-import { collection, query, orderBy, onSnapshot, runTransaction, deleteDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, deleteDoc, where } from 'firebase/firestore';
 import { db, auth, handleFirestoreError } from '../lib/auth';
 import { DailyLog } from '../lib/types';
 import { Link, useNavigate } from 'react-router-dom';
 import { Plus, FileText, ChevronRight, Download, Upload, Printer, Calendar, Trash2 } from 'lucide-react';
 import { setDoc, doc } from 'firebase/firestore';
+
+type BackupPayload = {
+  version: number;
+  exportedAt: string;
+  ownerId: string;
+  total: number;
+  logs: DailyLog[];
+};
+
+const createRestoreLogId = () => {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+};
+
+const normalizeLogForRestore = (raw: unknown, ownerId: string): DailyLog => {
+  const log = (raw && typeof raw === 'object' ? raw : {}) as Partial<DailyLog>;
+  return {
+    id: typeof log.id === 'string' && log.id.trim() !== '' ? log.id : createRestoreLogId(),
+    ownerId,
+    siteName: typeof log.siteName === 'string' ? log.siteName : '',
+    date: typeof log.date === 'string' && log.date ? log.date : new Date().toISOString().slice(0, 10),
+    workerStaff: Number.isFinite(log.workerStaff as number) ? Number(log.workerStaff) : 0,
+    workerLaborer: Number.isFinite(log.workerLaborer as number) ? Number(log.workerLaborer) : 0,
+    tasks: typeof log.tasks === 'string' ? log.tasks : '',
+    education: typeof log.education === 'string' ? log.education : '특이사항 없음',
+    others: typeof log.others === 'string' ? log.others : '특이사항 없음',
+    aiSummary: typeof log.aiSummary === 'string' ? log.aiSummary : '',
+    hazardsText: typeof log.hazardsText === 'string' ? log.hazardsText : '',
+    actionsText: typeof log.actionsText === 'string' ? log.actionsText : '',
+    checklistData: typeof log.checklistData === 'string' ? log.checklistData : '{}',
+    relatedPhotosData: typeof log.relatedPhotosData === 'string' ? log.relatedPhotosData : '[]',
+    managerSignature: typeof log.managerSignature === 'string' ? log.managerSignature : '',
+    directorSignature: typeof log.directorSignature === 'string' ? log.directorSignature : '',
+    createdAt: typeof log.createdAt === 'number' ? log.createdAt : Date.now(),
+    updatedAt: typeof log.updatedAt === 'number' ? log.updatedAt : Date.now(),
+  };
+};
 
 export default function DailyLogList() {
   const navigate = useNavigate();
@@ -14,26 +53,63 @@ export default function DailyLogList() {
   const [selectedLogs, setSelectedLogs] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    if (!auth.currentUser) return;
-    
-    const q = query(collection(db, 'logs'), orderBy('date', 'desc'));
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const logData: DailyLog[] = [];
-      snapshot.forEach(doc => {
-        logData.push({ id: doc.id, ...doc.data() } as DailyLog);
+    let unsubscribeSnapshot: (() => void) | undefined;
+
+    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
+      if (unsubscribeSnapshot) {
+        unsubscribeSnapshot();
+        unsubscribeSnapshot = undefined;
+      }
+
+      if (!user) {
+        setLogs([]);
+        setLoading(false);
+        return;
+      }
+
+      const q = query(
+        collection(db, 'logs'),
+        where('ownerId', '==', user.uid),
+        orderBy('date', 'desc')
+      );
+
+      unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
+        const logData: DailyLog[] = [];
+        snapshot.forEach(doc => {
+          logData.push({ id: doc.id, ...doc.data() } as DailyLog);
+        });
+        setLogs(logData);
+        setLoading(false);
+      }, (error) => {
+        setLoading(false);
+        handleFirestoreError(error, 'list', 'logs');
       });
-      setLogs(logData);
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, 'list', 'logs');
     });
 
-    return () => unsubscribe();
+    return () => {
+      if (unsubscribeSnapshot) {
+        unsubscribeSnapshot();
+      }
+      unsubscribeAuth();
+    };
   }, []);
 
   const handleBackup = () => {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(logs));
+    const ownerId = auth.currentUser?.uid;
+    if (!ownerId) {
+      alert('로그인 정보가 확인되지 않아 백업할 수 없습니다.');
+      return;
+    }
+
+    const payload: BackupPayload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      ownerId,
+      total: logs.length,
+      logs,
+    };
+
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(payload));
     const downloadAnchorNode = document.createElement('a');
     downloadAnchorNode.setAttribute("href", dataStr);
     downloadAnchorNode.setAttribute("download", `daily_logs_backup_${new Date().getTime()}.json`);
@@ -48,19 +124,50 @@ export default function DailyLogList() {
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
-        const importedLogs = JSON.parse(event.target?.result as string);
-        if (Array.isArray(importedLogs)) {
-          for (const log of importedLogs) {
-             const logId = log.id || String(Date.now());
-             const logRef = doc(db, 'logs', logId);
-             // exclude id from the object itself when saving to firestore if needed, but it's okay
-             await setDoc(logRef, { ...log, ownerId: auth.currentUser?.uid }, { merge: true });
+        const parsed = JSON.parse(event.target?.result as string);
+        const importedLogs: DailyLog[] = Array.isArray(parsed)
+          ? parsed
+          : Array.isArray(parsed?.logs)
+            ? parsed.logs
+            : [];
+
+        if (!Array.isArray(importedLogs) || importedLogs.length === 0) {
+          alert('복구할 데이터가 없거나 백업 형식이 올바르지 않습니다.');
+          return;
+        }
+
+        const ownerId = auth.currentUser?.uid;
+        if (!ownerId) {
+          alert('로그인 정보가 확인되지 않아 복구할 수 없습니다.');
+          return;
+        }
+
+        let successCount = 0;
+        let failedCount = 0;
+
+        for (const log of importedLogs) {
+          try {
+            const normalizedLog = normalizeLogForRestore(log, ownerId);
+            const logId = normalizedLog.id;
+            const logRef = doc(db, 'logs', logId);
+            await setDoc(logRef, normalizedLog, { merge: true });
+            successCount += 1;
+          } catch (restoreError) {
+            failedCount += 1;
+            console.error('Restore failed for one log:', restoreError);
           }
-          alert('복구가 완료되었습니다.');
+        }
+
+        if (failedCount === 0) {
+          alert(`복구가 완료되었습니다. (${successCount}건)`);
+        } else {
+          alert(`복구가 부분 완료되었습니다. 성공 ${successCount}건 / 실패 ${failedCount}건`);
         }
       } catch (err) {
         console.error(err);
         alert('잘못된 백업 파일입니다.');
+      } finally {
+        e.target.value = '';
       }
     };
     reader.readAsText(file);
