@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db, auth } from '../lib/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from '../lib/localFirestore';
 import { GoogleGenAI } from '@google/genai';
 import { Shield, Upload, Loader2, Save, Trash2, Camera, Info } from 'lucide-react';
 import { HIGH_RISK_ASSESSMENTS } from '../lib/checklistTypes';

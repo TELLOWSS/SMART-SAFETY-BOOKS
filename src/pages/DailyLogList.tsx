@@ -1,12 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { collection, query, orderBy, onSnapshot, deleteDoc, where } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, deleteDoc, where } from '../lib/localFirestore';
 import { db, auth, handleFirestoreError } from '../lib/auth';
 import { DailyLog } from '../lib/types';
 import { Link, useNavigate } from 'react-router-dom';
 import { Plus, FileText, ChevronRight, Download, Upload, Printer, Calendar, Trash2 } from 'lucide-react';
-import { setDoc, doc } from 'firebase/firestore';
-import { ref, uploadString, getDownloadURL } from 'firebase/storage';
-import { storage } from '../lib/firebase';
+import { setDoc, doc } from '../lib/localFirestore';
 
 type BackupPayload = {
   version: number;
@@ -94,12 +92,9 @@ const prepareLogForBackup = async (log: DailyLog) => ({
 });
 
 const uploadImageDataUrl = async (value: string, storagePath: string) => {
+  void storagePath;
   if (!value) return '';
-  if (!isDataUrl(value)) return value;
-
-  const imageRef = ref(storage, storagePath);
-  await uploadString(imageRef, value, 'data_url');
-  return getDownloadURL(imageRef);
+  return value;
 };
 
 const restoreChecklistData = async (checklistData: string, logId: string, ownerId: string) => {

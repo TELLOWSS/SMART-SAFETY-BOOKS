@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc } from '../lib/localFirestore';
 import { db, auth, handleFirestoreError } from '../lib/auth';
 import { Notification } from '../lib/types';
 import { Bell, Check, Trash2 } from 'lucide-react';

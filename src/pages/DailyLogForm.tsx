@@ -1,13 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc, getDocs, setDoc, updateDoc, serverTimestamp, collection, query, where, orderBy, limit } from 'firebase/firestore';
+import { doc, getDoc, getDocs, setDoc, updateDoc, serverTimestamp, collection, query, where, orderBy, limit } from '../lib/localFirestore';
 import { db, auth, handleFirestoreError } from '../lib/auth';
 import { DailyLog, ChecklistData, RelatedPhoto } from '../lib/types';
-import { storage } from '../lib/firebase';
 import { MUST_DO_GUIDELINES, FIVE_PROHIBITIONS, HIGH_RISK_ASSESSMENTS, PTW_INSPECTION } from '../lib/checklistTypes';
 import { ArrowLeft, Save, Sparkles, Loader2, Camera, Plus, Trash2, Printer, ChevronDown, ChevronUp, MinusCircle } from 'lucide-react';
 import { format } from 'date-fns';
-import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 
 import { triggerHaptic } from '../lib/haptic';
 
@@ -173,22 +171,9 @@ async function withRetry<T>(task: () => Promise<T>, maxAttempts: number, retryDe
 }
 
 async function persistImageAsset(imageValue: string, storagePath: string): Promise<string> {
+  void storagePath;
   if (!imageValue) return '';
-  if (!imageValue.startsWith('data:')) return imageValue;
-
-  const imageRef = ref(storage, storagePath);
-  return withRetry(
-    () => withTimeout(
-      (async () => {
-        await uploadString(imageRef, imageValue, 'data_url');
-        return getDownloadURL(imageRef);
-      })(),
-      60000,
-      '사진 업로드 시간이 초과되었습니다. 네트워크 상태를 확인하거나 사진 개수를 줄인 뒤 다시 저장해주세요.'
-    ),
-    2,
-    1200
-  );
+  return imageValue;
 }
 
 export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
