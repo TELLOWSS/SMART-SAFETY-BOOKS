@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+.npm-cache/
+.remote-check
+package-lock.remote.json

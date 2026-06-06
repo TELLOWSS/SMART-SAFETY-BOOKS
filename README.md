@@ -1,20 +1,18 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# SMART SAFETY BOOKS
 
-# Run and deploy your AI Studio app
+안전전담자 운영일지를 인터넷 연결 없이 사용하는 오프라인 우선 앱입니다.
 
-This contains everything you need to run your app locally.
+## 데이터 저장
 
-View your app in AI Studio: https://ai.studio/apps/ea1ba93f-f94c-4147-8d62-06ae1c110f07
+- 일지, 사진, 서명, 위험성평가, 알림은 현재 브라우저의 IndexedDB에 저장됩니다.
+- Firebase나 다른 클라우드 계정은 사용하지 않습니다.
+- 브라우저 데이터 삭제, 다른 브라우저 사용, 컴퓨터 초기화에 대비해 정기적으로 JSON 백업을 보관해야 합니다.
+- JSON 백업에는 사진과 서명을 포함한 전체 앱 데이터와 무결성 검증값이 포함됩니다.
 
-## Run Locally
+## 실행
 
-**Prerequisites:**  Node.js
+1. `npm install`
+2. 선택 기능인 AI 요약/OCR을 사용할 경우 `.env.local`에 `GEMINI_API_KEY` 설정
+3. `npm run dev`
 
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+일지 작성, 저장, 열람, 인쇄, JSON 백업과 복구는 인터넷 없이 동작합니다. AI 요약과 OCR만 인터넷 연결이 필요합니다.
