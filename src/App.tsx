@@ -24,14 +24,17 @@ function NavLink({ to, icon: Icon, children }: { to: string, icon: any, children
   return (
     <Link 
       to={to} 
-      className={`flex items-center px-4 py-3 mb-1.5 text-sm font-medium rounded-xl transition-all duration-200 ${
+      className={`flex items-center px-4 py-3.5 mb-2 text-sm font-semibold rounded-2xl transition-all duration-300 relative overflow-hidden group ${
         isActive 
-          ? 'bg-blue-600 shadow-md shadow-blue-900/20 text-white' 
-          : 'text-slate-400 hover:bg-slate-800/50 hover:text-white'
+          ? 'bg-gradient-to-r from-safety-orange to-amber-500 text-white shadow-lg shadow-safety-orange/20 translate-x-1' 
+          : 'text-slate-400 hover:bg-slate-900/50 hover:text-slate-200'
       }`}
     >
-      <Icon className={`w-5 h-5 mr-3 ${isActive ? 'text-blue-100' : 'text-slate-500 group-hover:text-slate-300'}`} /> 
-      {children}
+      <Icon className={`w-5 h-5 mr-3 transition-transform duration-300 group-hover:scale-110 ${isActive ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'}`} /> 
+      <span className="relative z-10">{children}</span>
+      {isActive && (
+        <span className="absolute right-0 top-0 bottom-0 w-1 bg-white rounded-l-full" />
+      )}
     </Link>
   );
 }
@@ -56,34 +59,40 @@ function Layout({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <div className="flex h-screen print:h-auto print:overflow-visible bg-slate-50 dark:bg-slate-900 hc:bg-white overflow-hidden font-sans selection:bg-blue-100 selection:text-blue-900 transition-colors">
-      <aside className="w-[280px] bg-slate-950 flex flex-col justify-between shrink-0 hidden md:flex z-10 shadow-2xl print:hidden">
+    <div className="flex h-screen print:h-auto print:overflow-visible bg-slate-50 dark:bg-slate-950 hc:bg-white overflow-hidden font-sans selection:bg-orange-100 selection:text-orange-900 transition-colors">
+      <aside className="w-[280px] bg-brand-slate flex flex-col justify-between shrink-0 hidden md:flex z-10 shadow-2xl print:hidden border-r border-slate-900/50">
         <div>
-          <div className="h-20 flex items-center px-8 border-b border-slate-800">
-            <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-blue-400 to-blue-600 hc:from-black hc:to-black hc:bg-black hc:rounded-none text-white shadow-lg shadow-blue-500/20 mr-3">
-              <Shield className="w-5 h-5" />
+          <div className="h-24 flex items-center px-8 border-b border-slate-900/50 bg-slate-950/20">
+            <div className="flex items-center justify-center w-10 h-10 rounded-2xl bg-gradient-to-br from-safety-orange to-amber-500 text-white shadow-md shadow-safety-orange/20 mr-3.5 border border-white/10">
+              <Shield className="w-5 h-5 animate-pulse" />
             </div>
-            <h1 className="font-bold text-xl tracking-tight text-white focus:outline-none">안전전담자 운영일지</h1>
+            <div className="flex flex-col">
+              <h1 className="font-extrabold text-base tracking-tight text-white focus:outline-none leading-none">Safeguard Books</h1>
+              <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1">Safety Control OS</span>
+            </div>
           </div>
-          <nav className="p-4 mt-2">
-             <div className="text-[11px] font-bold text-slate-500 hc:text-slate-300 uppercase tracking-widest mb-4 px-3">운영일지 메뉴</div>
-             <NavLink to="/" icon={Home}>운영일지 목록</NavLink>
-             <NavLink to="/logs/new" icon={FileText}>신규 일지 작성</NavLink>
-             <NavLink to="/risk-assessment" icon={AlertTriangle}>월간 위험성평가</NavLink>
-             <NavLink to="/analysis" icon={BarChart2}>운영일지 통계</NavLink>
+          <nav className="p-5 mt-4">
+             <div className="text-[10px] font-extrabold text-slate-500 hc:text-slate-300 uppercase tracking-widest mb-4 px-3.5">OPERATING SYSTEMS</div>
+             <NavLink to="/" icon={Home}>운영일지 대시보드</NavLink>
+             <NavLink to="/logs/new" icon={FileText}>일일 일지 작성</NavLink>
+             <NavLink to="/risk-assessment" icon={AlertTriangle}>정기 위험성평가</NavLink>
+             <NavLink to="/analysis" icon={BarChart2}>종합 안전 통계</NavLink>
           </nav>
         </div>
-        <div className="p-5 border-t border-slate-800/80 bg-slate-900/30">
+        <div className="p-6 border-t border-slate-900/50 bg-slate-950/40 backdrop-blur-md">
           <div className="flex items-center justify-between">
-            <div className="flex flex-col">
-              <span className="text-sm font-bold text-white truncate">안전전담자</span>
-              <span className="text-xs text-slate-400 font-medium mt-0.5">익명 계정</span>
+            <div className="flex flex-col max-w-[140px]">
+              <span className="text-sm font-extrabold text-white truncate">안전전담자 모드</span>
+              <span className="text-[10px] text-emerald-400 font-semibold mt-0.5 flex items-center">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5 animate-ping" />
+                오프라인 저장 중
+              </span>
             </div>
-            <div className="flex items-center space-x-1">
-              <button onClick={cycleTheme} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition-colors relative" title="테마 변경">
+            <div className="flex items-center space-x-1.5">
+              <button onClick={cycleTheme} className="p-2.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-all duration-200 border border-slate-800/50 bg-slate-900/20" title="테마 변경">
                 {getThemeIcon()}
               </button>
-              <Link to="/notifications" className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition-colors relative">
+              <Link to="/notifications" className="p-2.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-all duration-200 border border-slate-800/50 bg-slate-900/20 relative">
                 <Bell className="w-5 h-5" />
               </Link>
             </div>
@@ -95,31 +104,31 @@ function Layout({ children }: { children: React.ReactNode }) {
         {/* Mobile Header */}
         <header className="md:hidden print:hidden h-16 bg-white dark:bg-slate-900 hc:bg-black hc:text-white hc:border-b-4 hc:border-white border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-5 shrink-0 shadow-sm z-10 transition-colors">
           <div className="flex items-center">
-             <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-blue-400 to-blue-600 hc:from-white hc:to-white hc:text-black text-white mr-2.5 shadow-sm">
+             <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-gradient-to-br from-safety-orange to-amber-500 hc:from-white hc:to-white hc:text-black text-white mr-2.5 shadow-sm">
                <Shield className="w-4 h-4" />
              </div>
-             <span className="font-bold text-base text-slate-900 dark:text-white hc:text-white">안전전담자 운영일지</span>
+             <span className="font-bold text-base text-slate-900 dark:text-white hc:text-white">Safeguard Books</span>
           </div>
           <div className="flex items-center space-x-1">
-            <button onClick={cycleTheme} className="p-2 text-slate-400 dark:text-slate-300 hc:text-white hover:text-blue-600 hc:hover:bg-white hc:hover:text-black hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
+            <button onClick={cycleTheme} className="p-2 text-slate-400 dark:text-slate-300 hc:text-white hover:text-safety-orange hc:hover:bg-white hc:hover:text-black hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors">
               {getThemeIcon()}
             </button>
-            <Link to="/notifications" className="p-2 text-slate-400 dark:text-slate-300 hc:text-white hover:text-blue-600 hc:hover:bg-white hc:hover:text-black hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
+            <Link to="/notifications" className="p-2 text-slate-400 dark:text-slate-300 hc:text-white hover:text-safety-orange hc:hover:bg-white hc:hover:text-black hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors">
               <Bell className="w-5 h-5" />
             </Link>
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto print:overflow-visible p-4 md:p-8 styled-scrollbar scroll-smooth bg-slate-50/50 dark:bg-slate-900/50 hc:bg-white print:bg-white print:p-0 transition-colors">
+        <main className="flex-1 overflow-y-auto print:overflow-visible p-4 md:p-8 styled-scrollbar scroll-smooth bg-slate-50/50 dark:bg-slate-950/20 hc:bg-white print:bg-white print:p-0 transition-colors">
           {children}
         </main>
         
         {/* Mobile Nav */}
-        <nav className="md:hidden print:hidden border-t border-slate-200 bg-white/80 backdrop-blur-md flex justify-around p-2 shrink-0 pb-safe z-10 shadow-[0_-4px_10px_-1px_rgba(0,0,0,0.05)]">
-            <Link to="/" className="p-2 flex flex-col items-center text-slate-500 hover:text-blue-600"><Home className="w-6 h-6" /><span className="text-[10px] mt-1 font-medium">일지 목록</span></Link>
-            <Link to="/logs/new" className="p-2 flex flex-col items-center text-slate-500 hover:text-blue-600"><FileText className="w-6 h-6" /><span className="text-[10px] mt-1 font-medium">신규 작성</span></Link>
-           <Link to="/risk-assessment" className="p-2 flex flex-col items-center text-slate-500 hover:text-blue-600"><AlertTriangle className="w-6 h-6" /><span className="text-[10px] mt-1 font-medium">위험성평가</span></Link>
-           <Link to="/analysis" className="p-2 flex flex-col items-center text-slate-500 hover:text-blue-600"><BarChart2 className="w-6 h-6" /><span className="text-[10px] mt-1 font-medium">통계</span></Link>
+        <nav className="md:hidden print:hidden border-t border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md flex justify-around p-2 shrink-0 pb-safe z-10 shadow-[0_-4px_10px_-1px_rgba(0,0,0,0.05)]">
+            <Link to="/" className="p-2 flex flex-col items-center text-slate-500 hover:text-safety-orange"><Home className="w-6 h-6" /><span className="text-[10px] mt-1 font-semibold">일지 목록</span></Link>
+            <Link to="/logs/new" className="p-2 flex flex-col items-center text-slate-500 hover:text-safety-orange"><FileText className="w-6 h-6" /><span className="text-[10px] mt-1 font-semibold">일지 작성</span></Link>
+            <Link to="/risk-assessment" className="p-2 flex flex-col items-center text-slate-500 hover:text-safety-orange"><AlertTriangle className="w-6 h-6" /><span className="text-[10px] mt-1 font-semibold">위험성평가</span></Link>
+            <Link to="/analysis" className="p-2 flex flex-col items-center text-slate-500 hover:text-safety-orange"><BarChart2 className="w-6 h-6" /><span className="text-[10px] mt-1 font-semibold">안전 통계</span></Link>
         </nav>
       </div>
     </div>
