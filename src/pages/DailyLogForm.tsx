@@ -699,12 +699,14 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
         hiddenSections,
       };
 
-      // Firestore 문서 크기(약 1MiB) 초과 시 저장이 실패하므로 사전 검증
+      // IndexedDB 저장 시에는 크기 제한이 없으므로 크기 검증 비활성화
+      /*
       const estimatedBytes = new Blob([JSON.stringify(logData)]).size;
       if (estimatedBytes > 900000) {
         alert('저장 데이터가 너무 큽니다. 사진 수를 줄이거나 해상도를 낮춘 뒤 다시 저장해주세요.');
         return;
       }
+      */
 
       setSaveProgress(90);
       setSaveStage('최종 저장 중');

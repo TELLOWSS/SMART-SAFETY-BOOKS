@@ -102,10 +102,129 @@ const reqToPromise = <T>(request: IDBRequest<T>) =>
     request.onerror = () => reject(request.error || new Error('IndexedDB 요청 실패'));
   });
 
+const extractImagesFromLog = (logData: any) => {
+  if (!logData) return { cleanLog: logData, images: null };
+
+  const images: any = {
+    managerSignature: '',
+    directorSignature: '',
+    checklistPhotos: {},
+    relatedPhotos: {},
+  };
+
+  const cleanLog = { ...logData };
+  
+  if (logData.managerSignature) {
+    if (logData.managerSignature.startsWith('data:')) {
+      images.managerSignature = logData.managerSignature;
+      cleanLog.managerSignature = 'PLACEHOLDER';
+    } else {
+      images.managerSignature = logData.managerSignature;
+    }
+  }
+  
+  if (logData.directorSignature) {
+    if (logData.directorSignature.startsWith('data:')) {
+      images.directorSignature = logData.directorSignature;
+      cleanLog.directorSignature = 'PLACEHOLDER';
+    } else {
+      images.directorSignature = logData.directorSignature;
+    }
+  }
+
+  // 1. Checklist photos
+  if (logData.checklistData) {
+    try {
+      const checklist = JSON.parse(logData.checklistData);
+      const cleanChecklist: any = {};
+      Object.entries(checklist).forEach(([itemId, itemValue]: [string, any]) => {
+        if (itemValue.photoUrl && itemValue.photoUrl.startsWith('data:')) {
+          images.checklistPhotos[itemId] = itemValue.photoUrl;
+          cleanChecklist[itemId] = { ...itemValue, photoUrl: 'PLACEHOLDER' };
+        } else {
+          cleanChecklist[itemId] = itemValue;
+        }
+      });
+      cleanLog.checklistData = JSON.stringify(cleanChecklist);
+    } catch (e) {
+      console.error('Failed to parse checklistData for image extraction', e);
+    }
+  }
+
+  // 2. Related photos
+  if (logData.relatedPhotosData) {
+    try {
+      const relatedPhotos = JSON.parse(logData.relatedPhotosData);
+      const cleanRelatedPhotos = relatedPhotos.map((photo: any) => {
+        if (photo.imageUrl && photo.imageUrl.startsWith('data:')) {
+          images.relatedPhotos[photo.id] = photo.imageUrl;
+          return { ...photo, imageUrl: 'PLACEHOLDER' };
+        }
+        return photo;
+      });
+      cleanLog.relatedPhotosData = JSON.stringify(cleanRelatedPhotos);
+    } catch (e) {
+      console.error('Failed to parse relatedPhotosData for image extraction', e);
+    }
+  }
+
+  return { cleanLog, images };
+};
+
+const mergeImagesIntoLog = (cleanLog: any, images: any) => {
+  if (!cleanLog) return cleanLog;
+  if (!images) return cleanLog;
+
+  const logData = { ...cleanLog };
+  if (logData.managerSignature === 'PLACEHOLDER') {
+    logData.managerSignature = images.managerSignature || '';
+  }
+  if (logData.directorSignature === 'PLACEHOLDER') {
+    logData.directorSignature = images.directorSignature || '';
+  }
+
+  // 1. Checklist photos
+  if (logData.checklistData) {
+    try {
+      const checklist = JSON.parse(logData.checklistData);
+      Object.entries(checklist).forEach(([itemId, itemValue]: [string, any]) => {
+        if (itemValue.photoUrl === 'PLACEHOLDER') {
+          itemValue.photoUrl = images.checklistPhotos?.[itemId] || '';
+        }
+      });
+      logData.checklistData = JSON.stringify(checklist);
+    } catch (e) {
+      console.error('Failed to merge checklistData images', e);
+    }
+  }
+
+  // 2. Related photos
+  if (logData.relatedPhotosData) {
+    try {
+      const relatedPhotos = JSON.parse(logData.relatedPhotosData);
+      relatedPhotos.forEach((photo: any) => {
+        if (photo.imageUrl === 'PLACEHOLDER') {
+          photo.imageUrl = images.relatedPhotos?.[photo.id] || '';
+        }
+      });
+      logData.relatedPhotosData = JSON.stringify(relatedPhotos);
+    } catch (e) {
+      console.error('Failed to merge relatedPhotosData images', e);
+    }
+  }
+
+  return logData;
+};
+
 const getDocData = async (path: string[]) => {
   if (path.length === 2 && path[0] === 'logs') {
-    const row = await runTx(STORE_LOGS, 'readonly', (store) => reqToPromise<any>(store.get(path[1])));
-    return row?.data;
+    const rowData = await runTx(STORE_LOGS, 'readonly', (store) => {
+      const logReq = store.get(path[1]);
+      const imgReq = store.get(`${path[1]}::images`);
+      return Promise.all([reqToPromise(logReq), reqToPromise(imgReq)]).then(([logRow, imgRow]) => ({ logRow, imgRow }));
+    });
+    if (!rowData.logRow) return undefined;
+    return mergeImagesIntoLog(rowData.logRow.data, rowData.imgRow?.data);
   }
 
   if (path.length === 2 && path[0] === 'settings') {
@@ -124,7 +243,14 @@ const getDocData = async (path: string[]) => {
 
 const setDocData = async (path: string[], value: any) => {
   if (path.length === 2 && path[0] === 'logs') {
-    await runTx(STORE_LOGS, 'readwrite', (store) => reqToPromise(store.put({ id: path[1], data: value })));
+    const { cleanLog, images } = extractImagesFromLog(value);
+    await runTx(STORE_LOGS, 'readwrite', (store) => {
+      const p1 = reqToPromise(store.put({ id: path[1], data: cleanLog }));
+      const p2 = images
+        ? reqToPromise(store.put({ id: `${path[1]}::images`, data: images }))
+        : reqToPromise(store.delete(`${path[1]}::images`));
+      return Promise.all([p1, p2]).then(() => undefined);
+    });
     return;
   }
 
@@ -149,7 +275,11 @@ const setDocData = async (path: string[], value: any) => {
 
 const deleteDocData = async (path: string[]) => {
   if (path.length === 2 && path[0] === 'logs') {
-    await runTx(STORE_LOGS, 'readwrite', (store) => reqToPromise(store.delete(path[1])));
+    await runTx(STORE_LOGS, 'readwrite', (store) => {
+      const p1 = reqToPromise(store.delete(path[1]));
+      const p2 = reqToPromise(store.delete(`${path[1]}::images`));
+      return Promise.all([p1, p2]).then(() => undefined);
+    });
     return;
   }
 
@@ -170,7 +300,9 @@ const deleteDocData = async (path: string[]) => {
 const getCollectionEntries = async (path: string[]) => {
   if (path.length === 1 && path[0] === 'logs') {
     const rows = await runTx(STORE_LOGS, 'readonly', (store) => reqToPromise<any[]>(store.getAll()));
-    return rows.map((row) => ({ id: row.id, data: row.data }));
+    return rows
+      .filter((row) => !row.id.endsWith('::images'))
+      .map((row) => ({ id: row.id, data: row.data }));
   }
 
   if (path.length === 1 && path[0] === 'settings') {
