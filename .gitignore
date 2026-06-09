@@ -9,3 +9,5 @@ coverage/
 .npm-cache/
 .remote-check
 package-lock.remote.json
+.publish-worktree/
+
