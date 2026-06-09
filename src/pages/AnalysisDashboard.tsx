@@ -16,19 +16,27 @@ export default function AnalysisDashboard() {
 
   useEffect(() => {
     mountedRef.current = true;
-    loadData();
-    return () => { mountedRef.current = false; };
-  }, []);
 
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const ownerId = auth.currentUser?.uid;
-      if (!ownerId) {
-        setLogs([]);
+    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
+      if (!user) {
+        if (mountedRef.current) {
+          setLogs([]);
+          setLoading(false);
+        }
         return;
       }
+      loadData(user.uid);
+    });
 
+    return () => {
+      mountedRef.current = false;
+      unsubscribeAuth();
+    };
+  }, []);
+
+  const loadData = async (ownerId: string) => {
+    setLoading(true);
+    try {
       const q = query(
         collection(db, 'logs'),
         where('ownerId', '==', ownerId),

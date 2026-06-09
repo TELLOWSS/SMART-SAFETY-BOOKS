@@ -11,25 +11,44 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!auth.currentUser) return;
-    
-    const q = query(
-      collection(db, `users/${auth.currentUser.uid}/notifications`),
-      orderBy('createdAt', 'desc')
-    );
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const notifs: Notification[] = [];
-      snapshot.forEach(doc => {
-        notifs.push({ id: doc.id, ...doc.data() } as Notification);
+    let unsubscribeSnapshot: (() => void) | undefined;
+
+    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
+      if (unsubscribeSnapshot) {
+        unsubscribeSnapshot();
+        unsubscribeSnapshot = undefined;
+      }
+
+      if (!user) {
+        setNotifications([]);
+        setLoading(false);
+        return;
+      }
+
+      const q = query(
+        collection(db, `users/${user.uid}/notifications`),
+        orderBy('createdAt', 'desc')
+      );
+
+      unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
+        const notifs: Notification[] = [];
+        snapshot.forEach(doc => {
+          notifs.push({ id: doc.id, ...doc.data() } as Notification);
+        });
+        setNotifications(notifs);
+        setLoading(false);
+      }, (error) => {
+        setLoading(false);
+        handleFirestoreError(error, 'list', 'notifications');
       });
-      setNotifications(notifs);
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, 'list', 'notifications');
     });
 
-    return () => unsubscribe();
+    return () => {
+      if (unsubscribeSnapshot) {
+        unsubscribeSnapshot();
+      }
+      unsubscribeAuth();
+    };
   }, []);
 
   const markAsRead = async (notifId: string) => {

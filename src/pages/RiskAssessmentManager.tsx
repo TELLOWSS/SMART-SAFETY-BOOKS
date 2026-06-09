@@ -23,10 +23,10 @@ export default function RiskAssessmentManager() {
 
   useEffect(() => {
     mountedRef.current = true;
-    if (!auth.currentUser) return;
-    const fetchRiskAssessment = async () => {
+
+    const fetchRiskAssessment = async (uid: string) => {
       try {
-        const docRef = doc(db, 'settings', `risk_assessment_${auth.currentUser?.uid}`);
+        const docRef = doc(db, 'settings', `risk_assessment_${uid}`);
         const snap = await getDoc(docRef);
         if (!mountedRef.current) return;
         if (snap.exists() && snap.data().items) {
@@ -49,9 +49,21 @@ export default function RiskAssessmentManager() {
         }
       }
     };
-    fetchRiskAssessment();
+
+    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
+      if (!user) {
+        if (mountedRef.current) {
+          setItems([]);
+          setLoading(false);
+        }
+        return;
+      }
+      fetchRiskAssessment(user.uid);
+    });
+
     return () => {
       mountedRef.current = false;
+      unsubscribeAuth();
     };
   }, []);
 
