@@ -397,6 +397,19 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
            setCopyFieldOptions(nextCopyFieldOptions);
            setSiteTemplates(nextSiteTemplates);
          }
+         // load saved defaults (site name and signatures)
+         if (preferencesSnap.exists()) {
+           const prefs = preferencesSnap.data() || {};
+           const defaultSiteName = typeof prefs.defaultSiteName === 'string' ? prefs.defaultSiteName : '';
+           const defaultManagerSignature = typeof prefs.defaultManagerSignature === 'string' ? prefs.defaultManagerSignature : '';
+           const defaultDirectorSignature = typeof prefs.defaultDirectorSignature === 'string' ? prefs.defaultDirectorSignature : '';
+           if (mountedRef.current) {
+             // only set if not already filled by other auto-fill logic
+             setSiteName(prev => prev && prev.trim() ? prev : defaultSiteName);
+             setManagerSignature(prev => prev && prev.trim() ? prev : defaultManagerSignature);
+             setDirectorSignature(prev => prev && prev.trim() ? prev : defaultDirectorSignature);
+           }
+         }
 
          const snap = await getDoc(doc(db, 'settings', `risk_assessment_${reqId}`));
          if (snap.exists() && snap.data()?.items && mountedRef.current) {
@@ -424,6 +437,16 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
              setAutoFilledLogDate(nextRecentLogs[0].date);
              autoFilledRef.current = true;
            }
+          // cleared된 서명 대신 기본 서명이 존재하면 적용
+          if (preferencesSnap.exists()) {
+            const prefs = preferencesSnap.data() || {};
+            const defaultManagerSignature = typeof prefs.defaultManagerSignature === 'string' ? prefs.defaultManagerSignature : '';
+            const defaultDirectorSignature = typeof prefs.defaultDirectorSignature === 'string' ? prefs.defaultDirectorSignature : '';
+            if (mountedRef.current) {
+              setManagerSignature(prev => (prev && prev.trim()) ? prev : defaultManagerSignature);
+              setDirectorSignature(prev => (prev && prev.trim()) ? prev : defaultDirectorSignature);
+            }
+          }
          }
       }
     } catch(e) {}
@@ -554,6 +577,25 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
       if (mountedRef.current) {
         setSavingSiteTemplate(false);
       }
+    }
+  };
+
+  const handleSaveDefaults = async () => {
+    if (!auth.currentUser) return;
+    const trimmedSiteName = siteName.trim();
+    setSavingSiteTemplate(true);
+    try {
+      await setDoc(doc(db, 'settings', `daily_log_preferences_${auth.currentUser.uid}`), {
+        defaultSiteName: trimmedSiteName || '',
+        defaultManagerSignature: managerSignature || '',
+        defaultDirectorSignature: directorSignature || '',
+      }, { merge: true });
+      if (mountedRef.current) alert('기본 현장명 및 서명을 저장했습니다. 다음 초안에서 자동으로 적용됩니다.');
+    } catch (error) {
+      console.error(error);
+      if (mountedRef.current) alert('기본값 저장 중 오류가 발생했습니다.');
+    } finally {
+      if (mountedRef.current) setSavingSiteTemplate(false);
     }
   };
 
@@ -1110,6 +1152,15 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
               >
                 {loadingSiteTemplate ? <Loader2 className="w-3 h-3 mr-1.5 animate-spin" /> : null}
                 현재 현장 템플릿 불러오기
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveDefaults}
+                disabled={savingSiteTemplate}
+                className="inline-flex items-center px-3 py-2 rounded-md border border-amber-300 bg-white text-amber-900 text-xs font-semibold hover:bg-amber-100 disabled:opacity-50"
+              >
+                {savingSiteTemplate ? <Loader2 className="w-3 h-3 mr-1.5 animate-spin" /> : null}
+                현재 현장·서명 기본값 저장
               </button>
             </div>
             <label className="flex items-center gap-2 text-xs font-medium text-amber-900">
