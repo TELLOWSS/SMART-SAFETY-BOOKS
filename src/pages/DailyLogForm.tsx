@@ -15,6 +15,7 @@ type CopyFieldOptions = {
   hazards: boolean;
   misc: boolean;
   checklist: boolean;
+  checklistAction: boolean;
   aiSummary: boolean;
 };
 
@@ -26,6 +27,7 @@ const DEFAULT_COPY_FIELD_OPTIONS: CopyFieldOptions = {
   hazards: true,
   misc: true,
   checklist: true,
+  checklistAction: true,
   aiSummary: true,
 };
 
@@ -261,24 +263,29 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
       setAiSummary(data.aiSummary || '');
     }
 
-    if (copyFields.checklist && data.checklistData) {
+    if ((copyFields.checklist || copyFields.checklistAction) && data.checklistData) {
       try {
         const parsedChecklist = JSON.parse(data.checklistData) as ChecklistData;
-        if (clearImages) {
-          const checklistWithoutPhotos = Object.fromEntries(
-            Object.entries(parsedChecklist).map(([itemId, itemValue]) => [
-              itemId,
-              { ...itemValue, photoUrl: '' }
-            ])
-          ) as ChecklistData;
-          setChecklist(checklistWithoutPhotos);
-        } else {
-          setChecklist(parsedChecklist);
-        }
+        const processedChecklist = Object.fromEntries(
+          Object.entries(parsedChecklist).map(([itemId, itemValue]) => {
+            const nextValue = { ...itemValue };
+            if (clearImages) {
+              nextValue.photoUrl = '';
+            }
+            if (!copyFields.checklist) {
+              nextValue.status = 'N/A';
+            }
+            if (!copyFields.checklistAction) {
+              nextValue.action = '작업없음';
+            }
+            return [itemId, nextValue];
+          })
+        ) as ChecklistData;
+        setChecklist(processedChecklist);
       } catch {
         setChecklist({});
       }
-    } else if (copyFields.checklist) {
+    } else if (copyFields.checklist || copyFields.checklistAction) {
       setChecklist({});
     }
 
@@ -294,7 +301,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
 
     setManagerSignature(clearImages ? '' : (data.managerSignature || ''));
     setDirectorSignature(clearImages ? '' : (data.directorSignature || ''));
-    if (copyFields.checklist) {
+    if (copyFields.checklist || copyFields.checklistAction) {
       setHiddenSections((data as DailyLog & { hiddenSections?: Record<string, boolean> }).hiddenSections || {});
     }
   };
@@ -841,6 +848,62 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
     await handleChecklistPhotoUpload(id, e);
   };
 
+  const handleChecklistPaste = async (itemId: string, e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const file = items[i].getAsFile();
+        if (file) {
+          e.preventDefault();
+          try {
+            const nextImage = await prepareAttachmentImage(file, attachmentMode);
+            handleChecklistChange(itemId, 'photoUrl', nextImage);
+            triggerHaptic('success');
+          } catch (err) {
+            console.error("Clipboard checklist image processing failed", err);
+          }
+        }
+      }
+    }
+  };
+
+  const handleGlobalPaste = async (e: React.ClipboardEvent) => {
+    const target = e.target as HTMLElement;
+    if (
+      target.tagName === 'TEXTAREA' && 
+      (target as HTMLTextAreaElement).placeholder?.includes('점검내용')
+    ) {
+      return;
+    }
+
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const file = items[i].getAsFile();
+        if (file) {
+          e.preventDefault();
+          try {
+            const nextImage = await prepareAttachmentImage(file, attachmentMode);
+            setRelatedPhotos(prev => [...prev, {
+              id: Date.now().toString(),
+              date: format(new Date(), 'MM/dd'),
+              location: '',
+              issue: '',
+              imageUrl: nextImage
+            }]);
+            triggerHaptic('success');
+          } catch (err) {
+            console.error("Global paste image processing failed", err);
+          }
+        }
+      }
+    }
+  };
+
   const addRelatedPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       try {
@@ -1037,6 +1100,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
                    onChange={(e) => handleChecklistChange(item.id, 'action', e.target.value)}
                    className="block w-full h-full border-neutral-200 shadow-sm text-sm print:hidden rounded resize-none focus:border-blue-500 focus:ring-blue-500 min-h-[60px]"
                    placeholder="점검내용 입력..."
+                    onPaste={(e) => handleChecklistPaste(item.id, e)}
                  />
                  <div className="hidden print:block whitespace-pre-wrap flex-1 mt-1 leading-relaxed">
                     {val.action !== '작업없음' && val.action !== '' ? val.action : (val.status === 'N/A' || val.status === '미해당' ? '' : '')}
@@ -1053,7 +1117,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
   };
 
   return (
-    <div className={`max-w-5xl mx-auto pb-12 w-full print:p-0 print:m-0 ${logIdProp ? 'print:break-after-page page-break-after-always pb-0' : ''}`}>
+    <div onPaste={handleGlobalPaste} className={`max-w-5xl mx-auto pb-12 w-full print:p-0 print:m-0 ${logIdProp ? 'print:break-after-page page-break-after-always pb-0' : ''}`}>
       {!logIdProp && (
         <div className="flex items-center justify-between mb-6 print:hidden">
           <button onClick={() => navigate('/logs')} className="text-neutral-500 hover:text-neutral-900 flex items-center text-sm font-medium">
@@ -1133,7 +1197,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
                 ? `${siteName.trim()} 현장 템플릿이 저장되어 있습니다.`
                 : '현장명을 입력하면 현장별 템플릿을 따로 저장할 수 있습니다.'}
             </div>
-            <div className="text-xs text-amber-800">출역인원, 작업내용, 위험요소, 조치내용, 교육/기타, 체크리스트를 복사하고 날짜, 사진, 서명은 오늘 작성 기준으로 비워둡니다.</div>
+            <div className="text-xs text-amber-800">출역인원, 작업내용, 위험요소, 조치내용, 교육/기타, 체크리스트, 점검내용을 복사하고 날짜, 사진, 서명은 오늘 작성 기준으로 비워둡니다.</div>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
@@ -1179,6 +1243,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
                 { key: 'hazards', label: '위험요소/조치' },
                 { key: 'misc', label: '교육/기타' },
                 { key: 'checklist', label: '체크리스트' },
+                { key: 'checklistAction', label: '점검내용' },
                 { key: 'aiSummary', label: 'AI 요약' },
               ].map(option => (
                 <label key={option.key} className="flex items-center gap-2 font-medium">
@@ -1654,6 +1719,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
                             value={val.action || ''}
                             onChange={e => handleChecklistChange(item.id, 'action', e.target.value)}
                             placeholder="점검내용을 입력하세요..."
+                            onPaste={e => handleChecklistPaste(item.id, e)}
                             className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-400 resize-y min-h-[72px] leading-relaxed"
                           />
                         </div>
