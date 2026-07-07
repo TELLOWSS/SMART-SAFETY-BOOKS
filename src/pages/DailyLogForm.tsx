@@ -17,6 +17,8 @@ type CopyFieldOptions = {
   checklist: boolean;
   checklistAction: boolean;
   aiSummary: boolean;
+  siteName: boolean;
+  signatures: boolean;
 };
 
 type AttachmentMode = 'optimized' | 'original';
@@ -29,6 +31,8 @@ const DEFAULT_COPY_FIELD_OPTIONS: CopyFieldOptions = {
   checklist: true,
   checklistAction: true,
   aiSummary: true,
+  siteName: true,
+  signatures: true,
 };
 
 const normalizeCopyFieldOptions = (value: unknown): CopyFieldOptions => ({
@@ -232,7 +236,9 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
     const copyFields = options?.copyFields ?? DEFAULT_COPY_FIELD_OPTIONS;
     const overwriteSiteName = options?.overwriteSiteName ?? true;
 
-    if (overwriteSiteName) {
+    if (copyFields.siteName) {
+      setSiteName(data.siteName || '');
+    } else if (overwriteSiteName) {
       setSiteName(data.siteName || '');
     }
 
@@ -299,8 +305,13 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
       setRelatedPhotos([]);
     }
 
-    setManagerSignature(clearImages ? '' : (data.managerSignature || ''));
-    setDirectorSignature(clearImages ? '' : (data.directorSignature || ''));
+    if (copyFields.signatures) {
+      setManagerSignature(data.managerSignature || '');
+      setDirectorSignature(data.directorSignature || '');
+    } else {
+      setManagerSignature(clearImages ? '' : (data.managerSignature || ''));
+      setDirectorSignature(clearImages ? '' : (data.directorSignature || ''));
+    }
     if (copyFields.checklist || copyFields.checklistAction) {
       setHiddenSections((data as DailyLog & { hiddenSections?: Record<string, boolean> }).hiddenSections || {});
     }
@@ -1197,7 +1208,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
                 ? `${siteName.trim()} 현장 템플릿이 저장되어 있습니다.`
                 : '현장명을 입력하면 현장별 템플릿을 따로 저장할 수 있습니다.'}
             </div>
-            <div className="text-xs text-amber-800">출역인원, 작업내용, 위험요소, 조치내용, 교육/기타, 체크리스트, 점검내용을 복사하고 날짜, 사진, 서명은 오늘 작성 기준으로 비워둡니다.</div>
+            <div className="text-xs text-amber-800">선택한 항목(현장명, 출역인원, 작업내용, 위험요소, 조치내용, 교육/기타, 체크리스트, 점검내용, 서명 등)을 복사하고 날짜와 사진은 오늘 작성 기준으로 비워둡니다.</div>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
@@ -1238,12 +1249,14 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
             </label>
             <div className="grid grid-cols-2 gap-2 rounded-md border border-amber-200 bg-white/70 p-3 text-xs text-amber-900 sm:grid-cols-3">
               {[
+                { key: 'siteName', label: '현장명' },
                 { key: 'workforce', label: '출역인원' },
                 { key: 'tasks', label: '주요 작업내용' },
                 { key: 'hazards', label: '위험요소/조치' },
                 { key: 'misc', label: '교육/기타' },
                 { key: 'checklist', label: '체크리스트' },
                 { key: 'checklistAction', label: '점검내용' },
+                { key: 'signatures', label: '서명' },
                 { key: 'aiSummary', label: 'AI 요약' },
               ].map(option => (
                 <label key={option.key} className="flex items-center gap-2 font-medium">
