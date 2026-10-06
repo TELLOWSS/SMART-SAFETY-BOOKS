@@ -118,6 +118,8 @@ const extractImagesFromLog = (logData: any) => {
     if (logData.managerSignature.startsWith('data:')) {
       images.managerSignature = logData.managerSignature;
       cleanLog.managerSignature = 'PLACEHOLDER';
+    } else if (logData.managerSignature === 'PLACEHOLDER') {
+      cleanLog.managerSignature = '';
     } else {
       images.managerSignature = logData.managerSignature;
     }
@@ -127,6 +129,8 @@ const extractImagesFromLog = (logData: any) => {
     if (logData.directorSignature.startsWith('data:')) {
       images.directorSignature = logData.directorSignature;
       cleanLog.directorSignature = 'PLACEHOLDER';
+    } else if (logData.directorSignature === 'PLACEHOLDER') {
+      cleanLog.directorSignature = '';
     } else {
       images.directorSignature = logData.directorSignature;
     }
@@ -141,6 +145,8 @@ const extractImagesFromLog = (logData: any) => {
         if (itemValue.photoUrl && itemValue.photoUrl.startsWith('data:')) {
           images.checklistPhotos[itemId] = itemValue.photoUrl;
           cleanChecklist[itemId] = { ...itemValue, photoUrl: 'PLACEHOLDER' };
+        } else if (itemValue.photoUrl === 'PLACEHOLDER') {
+          cleanChecklist[itemId] = { ...itemValue, photoUrl: '' };
         } else {
           cleanChecklist[itemId] = itemValue;
         }
@@ -155,10 +161,13 @@ const extractImagesFromLog = (logData: any) => {
   if (logData.relatedPhotosData) {
     try {
       const relatedPhotos = JSON.parse(logData.relatedPhotosData);
-      const cleanRelatedPhotos = relatedPhotos.map((photo: any) => {
+      const cleanRelatedPhotos = relatedPhotos.map((photo: any, index: number) => {
+        const photoKey = photo.id || String(index);
         if (photo.imageUrl && photo.imageUrl.startsWith('data:')) {
-          images.relatedPhotos[photo.id] = photo.imageUrl;
+          images.relatedPhotos[photoKey] = photo.imageUrl;
           return { ...photo, imageUrl: 'PLACEHOLDER' };
+        } else if (photo.imageUrl === 'PLACEHOLDER') {
+          return { ...photo, imageUrl: '' };
         }
         return photo;
       });
@@ -173,14 +182,13 @@ const extractImagesFromLog = (logData: any) => {
 
 const mergeImagesIntoLog = (cleanLog: any, images: any) => {
   if (!cleanLog) return cleanLog;
-  if (!images) return cleanLog;
 
   const logData = { ...cleanLog };
   if (logData.managerSignature === 'PLACEHOLDER') {
-    logData.managerSignature = images.managerSignature || '';
+    logData.managerSignature = images?.managerSignature || '';
   }
   if (logData.directorSignature === 'PLACEHOLDER') {
-    logData.directorSignature = images.directorSignature || '';
+    logData.directorSignature = images?.directorSignature || '';
   }
 
   // 1. Checklist photos
@@ -189,7 +197,7 @@ const mergeImagesIntoLog = (cleanLog: any, images: any) => {
       const checklist = JSON.parse(logData.checklistData);
       Object.entries(checklist).forEach(([itemId, itemValue]: [string, any]) => {
         if (itemValue.photoUrl === 'PLACEHOLDER') {
-          itemValue.photoUrl = images.checklistPhotos?.[itemId] || '';
+          itemValue.photoUrl = images?.checklistPhotos?.[itemId] || '';
         }
       });
       logData.checklistData = JSON.stringify(checklist);
@@ -202,9 +210,10 @@ const mergeImagesIntoLog = (cleanLog: any, images: any) => {
   if (logData.relatedPhotosData) {
     try {
       const relatedPhotos = JSON.parse(logData.relatedPhotosData);
-      relatedPhotos.forEach((photo: any) => {
+      relatedPhotos.forEach((photo: any, index: number) => {
+        const photoKey = photo.id || String(index);
         if (photo.imageUrl === 'PLACEHOLDER') {
-          photo.imageUrl = images.relatedPhotos?.[photo.id] || '';
+          photo.imageUrl = images?.relatedPhotos?.[photoKey] || images?.relatedPhotos?.[photo.id] || images?.relatedPhotos?.[String(index)] || '';
         }
       });
       logData.relatedPhotosData = JSON.stringify(relatedPhotos);
@@ -300,9 +309,19 @@ const deleteDocData = async (path: string[]) => {
 const getCollectionEntries = async (path: string[]) => {
   if (path.length === 1 && path[0] === 'logs') {
     const rows = await runTx(STORE_LOGS, 'readonly', (store) => reqToPromise<any[]>(store.getAll()));
+    const imageMap = new Map<string, any>();
+    rows.forEach((row) => {
+      if (typeof row.id === 'string' && row.id.endsWith('::images')) {
+        imageMap.set(row.id, row.data);
+      }
+    });
+
     return rows
-      .filter((row) => !row.id.endsWith('::images'))
-      .map((row) => ({ id: row.id, data: row.data }));
+      .filter((row) => typeof row.id === 'string' && !row.id.endsWith('::images'))
+      .map((row) => ({
+        id: row.id,
+        data: mergeImagesIntoLog(row.data, imageMap.get(`${row.id}::images`)),
+      }));
   }
 
   if (path.length === 1 && path[0] === 'settings') {

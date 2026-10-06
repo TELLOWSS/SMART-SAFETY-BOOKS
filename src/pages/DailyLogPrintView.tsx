@@ -203,12 +203,12 @@ export default function DailyLogPrintView({ logId }: Props) {
             </div>
             <div className="flex flex-1 min-h-[60px]">
               <div className="flex-1 border-r border-black flex items-center justify-center">
-                {log.managerSignature && (
+                {log.managerSignature && log.managerSignature !== 'PLACEHOLDER' && (
                   <img src={log.managerSignature} alt="담당서명" className="max-w-full max-h-full p-1 object-contain mix-blend-multiply" />
                 )}
               </div>
               <div className="flex-1 flex items-center justify-center">
-                {log.directorSignature && (
+                {log.directorSignature && log.directorSignature !== 'PLACEHOLDER' && (
                   <img src={log.directorSignature} alt="소장서명" className="max-w-full max-h-full p-1 object-contain mix-blend-multiply" />
                 )}
               </div>
@@ -298,7 +298,7 @@ export default function DailyLogPrintView({ logId }: Props) {
                   className={`flex flex-col border-black bg-white break-inside-avoid border-b ${isEven ? 'border-r' : ''}`}
                 >
                   <div className="aspect-[4/3] w-full relative bg-neutral-100 flex-shrink-0 border-b border-black overflow-hidden">
-                    {photo.imageUrl ? (
+                    {photo.imageUrl && photo.imageUrl !== 'PLACEHOLDER' ? (
                       <img src={photo.imageUrl} alt="현장사진" className="absolute inset-0 w-full h-full object-contain" />
                     ) : (
                       <div className="absolute inset-0 flex items-center justify-center text-neutral-400 text-sm">사진 없음</div>

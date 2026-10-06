@@ -4,7 +4,7 @@ import { db, auth, handleFirestoreError } from '../lib/auth';
 import { DailyLog } from '../lib/types';
 import { Link, useNavigate } from 'react-router-dom';
 import { Plus, FileText, ChevronRight, Download, Upload, Printer, Calendar, Trash2 } from 'lucide-react';
-import { setDoc, doc } from '../lib/localFirestore';
+import { setDoc, getDoc, doc } from '../lib/localFirestore';
 
 type BackupPayload = {
   version: number;
@@ -24,7 +24,7 @@ type BackupRelatedPhoto = {
   [key: string]: any;
 };
 
-const isDataUrl = (value: string) => value.startsWith('data:');
+const isDataUrl = (value: string) => typeof value === 'string' && value.startsWith('data:');
 
 const readBlobAsDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
   const reader = new FileReader();
@@ -34,16 +34,22 @@ const readBlobAsDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) 
 });
 
 const convertRemoteImageToDataUrl = async (url: string) => {
-  if (!url) return '';
+  if (!url || url === 'PLACEHOLDER') return '';
   if (isDataUrl(url)) return url;
+  if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('blob:')) return '';
 
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`이미지 다운로드 실패: ${response.status}`);
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.warn(`이미지 다운로드 실패: ${response.status} (${url})`);
+      return '';
+    }
+    const blob = await response.blob();
+    return await readBlobAsDataUrl(blob);
+  } catch (error) {
+    console.warn(`이미지 다운로드 처리 실패 (${url}):`, error);
+    return '';
   }
-
-  const blob = await response.blob();
-  return readBlobAsDataUrl(blob);
 };
 
 const prepareChecklistDataForBackup = async (checklistData: string) => {
@@ -52,13 +58,16 @@ const prepareChecklistDataForBackup = async (checklistData: string) => {
   try {
     const checklist = JSON.parse(checklistData) as Record<string, BackupChecklistItem>;
     const nextChecklist = await Promise.all(
-      Object.entries(checklist).map(async ([itemId, item]) => [
-        itemId,
-        {
-          ...item,
-          photoUrl: item.photoUrl ? await convertRemoteImageToDataUrl(item.photoUrl) : '',
-        },
-      ])
+      Object.entries(checklist).map(async ([itemId, item]) => {
+        const photoUrl = item.photoUrl ? await convertRemoteImageToDataUrl(item.photoUrl) : '';
+        return [
+          itemId,
+          {
+            ...item,
+            photoUrl,
+          },
+        ];
+      })
     );
     return JSON.stringify(Object.fromEntries(nextChecklist));
   } catch {
@@ -72,8 +81,9 @@ const prepareRelatedPhotosDataForBackup = async (relatedPhotosData: string) => {
   try {
     const relatedPhotos = JSON.parse(relatedPhotosData) as BackupRelatedPhoto[];
     const nextPhotos = await Promise.all(
-      relatedPhotos.map(async photo => ({
+      relatedPhotos.map(async (photo, index) => ({
         ...photo,
+        id: photo.id || `${Date.now()}_${index}`,
         imageUrl: photo.imageUrl ? await convertRemoteImageToDataUrl(photo.imageUrl) : '',
       }))
     );
@@ -93,7 +103,7 @@ const prepareLogForBackup = async (log: DailyLog) => ({
 
 const uploadImageDataUrl = async (value: string, storagePath: string) => {
   void storagePath;
-  if (!value) return '';
+  if (!value || value === 'PLACEHOLDER') return '';
   return value;
 };
 
@@ -103,16 +113,20 @@ const restoreChecklistData = async (checklistData: string, logId: string, ownerI
   try {
     const checklist = JSON.parse(checklistData) as Record<string, BackupChecklistItem>;
     const nextChecklist = await Promise.all(
-      Object.entries(checklist).map(async ([itemId, item]) => [
-        itemId,
-        {
-          ...item,
-          photoUrl: await uploadImageDataUrl(
-            item.photoUrl || '',
-            `daily-logs/${ownerId}/${logId}/checklist/${itemId}`
-          ),
-        },
-      ])
+      Object.entries(checklist).map(async ([itemId, item]) => {
+        const rawPhotoUrl = item.photoUrl || '';
+        const safePhotoUrl = rawPhotoUrl === 'PLACEHOLDER' ? '' : rawPhotoUrl;
+        return [
+          itemId,
+          {
+            ...item,
+            photoUrl: await uploadImageDataUrl(
+              safePhotoUrl,
+              `daily-logs/${ownerId}/${logId}/checklist/${itemId}`
+            ),
+          },
+        ];
+      })
     );
     return JSON.stringify(Object.fromEntries(nextChecklist));
   } catch {
@@ -126,13 +140,19 @@ const restoreRelatedPhotosData = async (relatedPhotosData: string, logId: string
   try {
     const relatedPhotos = JSON.parse(relatedPhotosData) as BackupRelatedPhoto[];
     const nextPhotos = await Promise.all(
-      relatedPhotos.map(async (photo, index) => ({
-        ...photo,
-        imageUrl: await uploadImageDataUrl(
-          photo.imageUrl || '',
-          `daily-logs/${ownerId}/${logId}/related-photos/${photo.id || index}`
-        ),
-      }))
+      relatedPhotos.map(async (photo, index) => {
+        const rawImageUrl = photo.imageUrl || '';
+        const safeImageUrl = rawImageUrl === 'PLACEHOLDER' ? '' : rawImageUrl;
+        const photoId = photo.id || `${Date.now()}_${index}`;
+        return {
+          ...photo,
+          id: photoId,
+          imageUrl: await uploadImageDataUrl(
+            safeImageUrl,
+            `daily-logs/${ownerId}/${logId}/related-photos/${photoId}`
+          ),
+        };
+      })
     );
     return JSON.stringify(nextPhotos);
   } catch {
@@ -141,7 +161,7 @@ const restoreRelatedPhotosData = async (relatedPhotosData: string, logId: string
 };
 
 const restoreImageField = async (value: string | undefined, storagePath: string) => {
-  if (!value) return '';
+  if (!value || value === 'PLACEHOLDER') return '';
   return uploadImageDataUrl(value, storagePath);
 };
 
@@ -233,7 +253,20 @@ export default function DailyLogList() {
     }
 
     try {
-      const logsWithAssets = await Promise.all(logs.map(log => prepareLogForBackup(log)));
+      const logsWithAssets = await Promise.all(
+        logs.map(async (log) => {
+          let fullLog = log;
+          try {
+            const docSnap = await getDoc(doc(db, 'logs', log.id));
+            if (docSnap.exists() && docSnap.data()) {
+              fullLog = { id: log.id, ...docSnap.data() } as DailyLog;
+            }
+          } catch (e) {
+            console.warn('백업용 문서 상세 조회 실패:', e);
+          }
+          return prepareLogForBackup(fullLog);
+        })
+      );
 
       const payload: BackupPayload = {
         version: 2,

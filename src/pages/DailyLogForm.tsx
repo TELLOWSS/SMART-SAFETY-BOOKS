@@ -1063,7 +1063,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
               </div>
               
               <div className="border-r-2 border-black flex flex-col items-center justify-center relative bg-white p-1">
-                {val.photoUrl ? (
+                {val.photoUrl && val.photoUrl !== 'PLACEHOLDER' ? (
                   <div className="relative group w-full h-full min-h-[100px] flex items-center justify-center overflow-hidden">
                     <img src={val.photoUrl} alt="Inspection" className="max-w-full max-h-full object-contain" />
                     <label className="absolute top-1 left-1 bg-white/90 text-slate-700 px-2 py-1 rounded-full text-[10px] font-semibold shadow cursor-pointer hover:bg-white print:hidden opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1487,7 +1487,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
                   onClick={() => document.getElementById(inputId)?.click()}
                   className="w-full aspect-square rounded-xl border-2 border-dashed border-slate-300 flex items-center justify-center cursor-pointer overflow-hidden relative bg-slate-50 hover:bg-slate-100 active:bg-slate-200 transition-colors"
                 >
-                  {sig ? (
+                  {sig && sig !== 'PLACEHOLDER' ? (
                     <>
                       <img src={sig} alt={`${label} 서명`} className="w-full h-full object-contain p-2 mix-blend-multiply" />
                       <button
@@ -1558,7 +1558,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
             {relatedPhotos.map(photo => (
               <div key={photo.id} className="rounded-xl border border-slate-200 overflow-hidden">
                 <div className="relative aspect-[4/3] bg-neutral-100">
-                  {photo.imageUrl
+                  {photo.imageUrl && photo.imageUrl !== 'PLACEHOLDER'
                     ? <img src={photo.imageUrl} alt="현장사진" className="absolute inset-0 w-full h-full object-contain" />
                     : <div className="absolute inset-0 flex items-center justify-center text-neutral-400 text-sm">사진 없음</div>
                   }
@@ -1702,7 +1702,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
                         {/* 점검사진 */}
                         <div>
                           <label className="block text-xs font-semibold text-slate-500 mb-1.5">점검사진</label>
-                          {val.photoUrl ? (
+                          {val.photoUrl && val.photoUrl !== 'PLACEHOLDER' ? (
                             <div className="relative rounded-xl overflow-hidden border border-slate-200">
                               <img src={val.photoUrl} alt="점검사진" className="w-full object-contain max-h-48" />
                               <label className="absolute top-2 left-2 bg-white/90 text-slate-700 px-2.5 py-1 rounded-full text-xs font-semibold shadow cursor-pointer hover:bg-white print:hidden">
@@ -1773,7 +1773,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
                   className="flex-1 border-r border-black relative group cursor-pointer justify-center items-center flex" 
                   onClick={() => document.getElementById('manager-sig')?.click()}
                 >
-                 {managerSignature ? (
+                 {managerSignature && managerSignature !== 'PLACEHOLDER' ? (
                    <img src={managerSignature} alt="담당 서명" className="max-w-full max-h-full p-1 object-contain mix-blend-multiply" />
                  ) : (
                    <span className="text-xs text-neutral-400 opacity-0 group-hover:opacity-100 transition-opacity print:hidden">서명 추가</span>
@@ -1786,7 +1786,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
                      } catch(err) { console.error(err); }
                    }
                  }} />
-                 {managerSignature && (
+                 {managerSignature && managerSignature !== 'PLACEHOLDER' && (
                    <button 
                      onClick={(e) => { e.stopPropagation(); setManagerSignature(''); }}
                      className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity print:hidden shadow"
@@ -1799,7 +1799,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
                  className="flex-1 relative group cursor-pointer justify-center items-center flex" 
                  onClick={() => document.getElementById('director-sig')?.click()}
                >
-                 {directorSignature ? (
+                 {directorSignature && directorSignature !== 'PLACEHOLDER' ? (
                    <img src={directorSignature} alt="소장 서명" className="max-w-full max-h-full p-1 object-contain mix-blend-multiply" />
                  ) : (
                    <span className="text-xs text-neutral-400 opacity-0 group-hover:opacity-100 transition-opacity print:hidden">서명 추가</span>
@@ -1812,7 +1812,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
                      } catch(err) { console.error(err); }
                    }
                  }} />
-                 {directorSignature && (
+                 {directorSignature && directorSignature !== 'PLACEHOLDER' && (
                    <button 
                      onClick={(e) => { e.stopPropagation(); setDirectorSignature(''); }}
                      className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity print:hidden shadow"
@@ -1959,7 +1959,7 @@ export default function DailyLogForm({ logIdProp }: { logIdProp?: string }) {
                 <div key={photo.id} className={`flex flex-col border-black bg-white break-inside-avoid border-b ${isEven ? 'md:border-r print:border-r' : ''}`}>
                   {/* Photo area */}
                   <div className="aspect-[4/3] w-full relative group bg-neutral-100 flex-shrink-0 border-b border-black">
-                    {photo.imageUrl ? (
+                    {photo.imageUrl && photo.imageUrl !== 'PLACEHOLDER' ? (
                       <img src={photo.imageUrl} alt="현장사진" className="absolute inset-0 w-full h-full object-contain" />
                     ) : (
                       <div className="absolute inset-0 flex items-center justify-center text-neutral-400">사진 없음</div>
