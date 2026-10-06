@@ -14,6 +14,14 @@ interface Props {
   logId: string;
 }
 
+const isSafeImageUrl = (url: unknown): boolean => {
+  if (typeof url !== 'string') return false;
+  const trimmed = url.trim();
+  if (!trimmed || trimmed === 'PLACEHOLDER') return false;
+  if (trimmed.startsWith('data:text/') || trimmed.startsWith('data:application/')) return false;
+  return trimmed.startsWith('data:image/') || trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('blob:');
+};
+
 export default function DailyLogPrintView({ logId }: Props) {
   const [log, setLog] = useState<DailyLog | null>(null);
   const [checklist, setChecklist] = useState<ChecklistData>({});
@@ -203,13 +211,23 @@ export default function DailyLogPrintView({ logId }: Props) {
             </div>
             <div className="flex flex-1 min-h-[60px]">
               <div className="flex-1 border-r border-black flex items-center justify-center">
-                {log.managerSignature && log.managerSignature !== 'PLACEHOLDER' && (
-                  <img src={log.managerSignature} alt="담당서명" className="max-w-full max-h-full p-1 object-contain mix-blend-multiply" />
+                {isSafeImageUrl(log.managerSignature) && (
+                  <img
+                    src={log.managerSignature}
+                    alt="담당서명"
+                    className="max-w-full max-h-full p-1 object-contain mix-blend-multiply"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                  />
                 )}
               </div>
               <div className="flex-1 flex items-center justify-center">
-                {log.directorSignature && log.directorSignature !== 'PLACEHOLDER' && (
-                  <img src={log.directorSignature} alt="소장서명" className="max-w-full max-h-full p-1 object-contain mix-blend-multiply" />
+                {isSafeImageUrl(log.directorSignature) && (
+                  <img
+                    src={log.directorSignature}
+                    alt="소장서명"
+                    className="max-w-full max-h-full p-1 object-contain mix-blend-multiply"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                  />
                 )}
               </div>
             </div>
@@ -298,8 +316,13 @@ export default function DailyLogPrintView({ logId }: Props) {
                   className={`flex flex-col border-black bg-white break-inside-avoid border-b ${isEven ? 'border-r' : ''}`}
                 >
                   <div className="aspect-[4/3] w-full relative bg-neutral-100 flex-shrink-0 border-b border-black overflow-hidden">
-                    {photo.imageUrl && photo.imageUrl !== 'PLACEHOLDER' ? (
-                      <img src={photo.imageUrl} alt="현장사진" className="absolute inset-0 w-full h-full object-contain" />
+                    {isSafeImageUrl(photo.imageUrl) ? (
+                      <img
+                        src={photo.imageUrl}
+                        alt="현장사진"
+                        className="absolute inset-0 w-full h-full object-contain"
+                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                      />
                     ) : (
                       <div className="absolute inset-0 flex items-center justify-center text-neutral-400 text-sm">사진 없음</div>
                     )}

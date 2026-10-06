@@ -24,7 +24,19 @@ type BackupRelatedPhoto = {
   [key: string]: any;
 };
 
-const isDataUrl = (value: string) => typeof value === 'string' && value.startsWith('data:');
+const isImageDataUrl = (value: unknown): boolean =>
+  typeof value === 'string' && value.startsWith('data:image/');
+
+const cleanseImageUrl = (url: unknown): string => {
+  if (typeof url !== 'string') return '';
+  const trimmed = url.trim();
+  if (!trimmed || trimmed === 'PLACEHOLDER') return '';
+  if (trimmed.startsWith('data:text/') || trimmed.startsWith('data:application/')) return '';
+  if (trimmed.startsWith('data:image/') || trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('blob:')) {
+    return trimmed;
+  }
+  return '';
+};
 
 const readBlobAsDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
   const reader = new FileReader();
@@ -34,20 +46,31 @@ const readBlobAsDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) 
 });
 
 const convertRemoteImageToDataUrl = async (url: string) => {
-  if (!url || url === 'PLACEHOLDER') return '';
-  if (isDataUrl(url)) return url;
-  if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('blob:')) return '';
+  const safe = cleanseImageUrl(url);
+  if (!safe) return '';
+  if (isImageDataUrl(safe)) return safe;
+  if (!safe.startsWith('http://') && !safe.startsWith('https://') && !safe.startsWith('blob:')) return '';
 
   try {
-    const response = await fetch(url);
+    const response = await fetch(safe);
     if (!response.ok) {
-      console.warn(`이미지 다운로드 실패: ${response.status} (${url})`);
+      console.warn(`이미지 다운로드 실패: ${response.status} (${safe})`);
+      return '';
+    }
+    const contentType = (response.headers.get('content-type') || '').toLowerCase();
+    // SPA 라우팅으로 인해 404 대신 index.html(text/html)이 반환되는 치명적 문제를 완벽 차단
+    if (contentType.includes('text/html') || !contentType.startsWith('image/')) {
+      console.warn(`이미지가 아닌 응답(${contentType})을 수신하여 제외합니다: ${safe}`);
       return '';
     }
     const blob = await response.blob();
+    if (!blob.type.startsWith('image/')) {
+      console.warn(`Blob 타입이 이미지가 아님(${blob.type}): ${safe}`);
+      return '';
+    }
     return await readBlobAsDataUrl(blob);
   } catch (error) {
-    console.warn(`이미지 다운로드 처리 실패 (${url}):`, error);
+    console.warn(`이미지 다운로드 처리 실패 (${safe}):`, error);
     return '';
   }
 };
@@ -59,7 +82,8 @@ const prepareChecklistDataForBackup = async (checklistData: string) => {
     const checklist = JSON.parse(checklistData) as Record<string, BackupChecklistItem>;
     const nextChecklist = await Promise.all(
       Object.entries(checklist).map(async ([itemId, item]) => {
-        const photoUrl = item.photoUrl ? await convertRemoteImageToDataUrl(item.photoUrl) : '';
+        const rawPhotoUrl = item.photoUrl ? await convertRemoteImageToDataUrl(item.photoUrl) : '';
+        const photoUrl = cleanseImageUrl(rawPhotoUrl);
         return [
           itemId,
           {
@@ -81,11 +105,15 @@ const prepareRelatedPhotosDataForBackup = async (relatedPhotosData: string) => {
   try {
     const relatedPhotos = JSON.parse(relatedPhotosData) as BackupRelatedPhoto[];
     const nextPhotos = await Promise.all(
-      relatedPhotos.map(async (photo, index) => ({
-        ...photo,
-        id: photo.id || `${Date.now()}_${index}`,
-        imageUrl: photo.imageUrl ? await convertRemoteImageToDataUrl(photo.imageUrl) : '',
-      }))
+      relatedPhotos.map(async (photo, index) => {
+        const rawImageUrl = photo.imageUrl ? await convertRemoteImageToDataUrl(photo.imageUrl) : '';
+        const imageUrl = cleanseImageUrl(rawImageUrl);
+        return {
+          ...photo,
+          id: photo.id || `${Date.now()}_${index}`,
+          imageUrl,
+        };
+      })
     );
     return JSON.stringify(nextPhotos);
   } catch {
@@ -93,18 +121,21 @@ const prepareRelatedPhotosDataForBackup = async (relatedPhotosData: string) => {
   }
 };
 
-const prepareLogForBackup = async (log: DailyLog) => ({
-  ...log,
-  checklistData: await prepareChecklistDataForBackup(log.checklistData),
-  relatedPhotosData: await prepareRelatedPhotosDataForBackup(log.relatedPhotosData),
-  managerSignature: log.managerSignature ? await convertRemoteImageToDataUrl(log.managerSignature) : '',
-  directorSignature: log.directorSignature ? await convertRemoteImageToDataUrl(log.directorSignature) : '',
-});
+const prepareLogForBackup = async (log: DailyLog) => {
+  const managerSignature = log.managerSignature ? cleanseImageUrl(await convertRemoteImageToDataUrl(log.managerSignature)) : '';
+  const directorSignature = log.directorSignature ? cleanseImageUrl(await convertRemoteImageToDataUrl(log.directorSignature)) : '';
+  return {
+    ...log,
+    checklistData: await prepareChecklistDataForBackup(log.checklistData),
+    relatedPhotosData: await prepareRelatedPhotosDataForBackup(log.relatedPhotosData),
+    managerSignature,
+    directorSignature,
+  };
+};
 
 const uploadImageDataUrl = async (value: string, storagePath: string) => {
   void storagePath;
-  if (!value || value === 'PLACEHOLDER') return '';
-  return value;
+  return cleanseImageUrl(value);
 };
 
 const restoreChecklistData = async (checklistData: string, logId: string, ownerId: string) => {
@@ -114,8 +145,7 @@ const restoreChecklistData = async (checklistData: string, logId: string, ownerI
     const checklist = JSON.parse(checklistData) as Record<string, BackupChecklistItem>;
     const nextChecklist = await Promise.all(
       Object.entries(checklist).map(async ([itemId, item]) => {
-        const rawPhotoUrl = item.photoUrl || '';
-        const safePhotoUrl = rawPhotoUrl === 'PLACEHOLDER' ? '' : rawPhotoUrl;
+        const safePhotoUrl = cleanseImageUrl(item.photoUrl);
         return [
           itemId,
           {
@@ -141,8 +171,7 @@ const restoreRelatedPhotosData = async (relatedPhotosData: string, logId: string
     const relatedPhotos = JSON.parse(relatedPhotosData) as BackupRelatedPhoto[];
     const nextPhotos = await Promise.all(
       relatedPhotos.map(async (photo, index) => {
-        const rawImageUrl = photo.imageUrl || '';
-        const safeImageUrl = rawImageUrl === 'PLACEHOLDER' ? '' : rawImageUrl;
+        const safeImageUrl = cleanseImageUrl(photo.imageUrl);
         const photoId = photo.id || `${Date.now()}_${index}`;
         return {
           ...photo,
@@ -161,8 +190,9 @@ const restoreRelatedPhotosData = async (relatedPhotosData: string, logId: string
 };
 
 const restoreImageField = async (value: string | undefined, storagePath: string) => {
-  if (!value || value === 'PLACEHOLDER') return '';
-  return uploadImageDataUrl(value, storagePath);
+  const safe = cleanseImageUrl(value);
+  if (!safe) return '';
+  return uploadImageDataUrl(safe, storagePath);
 };
 
 const createRestoreLogId = () => {
@@ -268,6 +298,27 @@ export default function DailyLogList() {
         })
       );
 
+      // 백업에 포함된 실제 사진 및 서명 개수 집계
+      let backupPhotoCount = 0;
+      for (const item of logsWithAssets) {
+        if (cleanseImageUrl(item.managerSignature)) backupPhotoCount++;
+        if (cleanseImageUrl(item.directorSignature)) backupPhotoCount++;
+        try {
+          const chk = JSON.parse(item.checklistData || '{}');
+          Object.values(chk).forEach((c: any) => {
+            if (cleanseImageUrl(c?.photoUrl)) backupPhotoCount++;
+          });
+        } catch {}
+        try {
+          const rel = JSON.parse(item.relatedPhotosData || '[]');
+          if (Array.isArray(rel)) {
+            rel.forEach((r: any) => {
+              if (cleanseImageUrl(r?.imageUrl)) backupPhotoCount++;
+            });
+          }
+        } catch {}
+      }
+
       const payload: BackupPayload = {
         version: 2,
         exportedAt: new Date().toISOString(),
@@ -283,7 +334,7 @@ export default function DailyLogList() {
       document.body.appendChild(downloadAnchorNode);
       downloadAnchorNode.click();
       downloadAnchorNode.remove();
-      alert(`백업이 완료되었습니다. (${logsWithAssets.length}건, 사진 포함)`);
+      alert(`백업이 완료되었습니다.\n- 일지 총 ${logsWithAssets.length}건\n- 포함된 사진 및 서명: ${backupPhotoCount}장`);
     } catch (error) {
       console.error(error);
       alert('백업 중 사진을 포함하는 과정에서 오류가 발생했습니다. 사진 URL에 접근할 수 없는 항목이 있을 수 있습니다.');
@@ -316,9 +367,31 @@ export default function DailyLogList() {
 
         let successCount = 0;
         let failedCount = 0;
+        let restoredPhotoCount = 0;
+        let filteredCorruptedCount = 0;
+
+        const isCorrupted = (val: unknown) => typeof val === 'string' && (val.startsWith('data:text/') || val.startsWith('data:application/'));
 
         for (const log of importedLogs) {
           try {
+            // 과거 손상된 백업 파일 오염 데이터 검사
+            if (isCorrupted(log.managerSignature)) filteredCorruptedCount++;
+            if (isCorrupted(log.directorSignature)) filteredCorruptedCount++;
+            try {
+              const rawChk = JSON.parse(log.checklistData || '{}');
+              Object.values(rawChk).forEach((c: any) => {
+                if (isCorrupted(c?.photoUrl)) filteredCorruptedCount++;
+              });
+            } catch {}
+            try {
+              const rawRel = JSON.parse(log.relatedPhotosData || '[]');
+              if (Array.isArray(rawRel)) {
+                rawRel.forEach((r: any) => {
+                  if (isCorrupted(r?.imageUrl)) filteredCorruptedCount++;
+                });
+              }
+            } catch {}
+
             const normalizedLog = normalizeLogForRestore(log, ownerId);
             const logId = normalizedLog.id;
             const logRef = doc(db, 'logs', logId);
@@ -326,6 +399,23 @@ export default function DailyLogList() {
             const relatedPhotosData = await restoreRelatedPhotosData(normalizedLog.relatedPhotosData, logId, ownerId);
             const managerSignature = await restoreImageField(normalizedLog.managerSignature, `daily-logs/${ownerId}/${logId}/signatures/manager`);
             const directorSignature = await restoreImageField(normalizedLog.directorSignature, `daily-logs/${ownerId}/${logId}/signatures/director`);
+
+            if (managerSignature) restoredPhotoCount++;
+            if (directorSignature) restoredPhotoCount++;
+            try {
+              const chk = JSON.parse(checklistData || '{}');
+              Object.values(chk).forEach((c: any) => {
+                if (c?.photoUrl) restoredPhotoCount++;
+              });
+            } catch {}
+            try {
+              const rel = JSON.parse(relatedPhotosData || '[]');
+              if (Array.isArray(rel)) {
+                rel.forEach((r: any) => {
+                  if (r?.imageUrl) restoredPhotoCount++;
+                });
+              }
+            } catch {}
 
             await setDoc(logRef, {
               ...normalizedLog,
@@ -341,11 +431,11 @@ export default function DailyLogList() {
           }
         }
 
-        if (failedCount === 0) {
-          alert(`복구가 완료되었습니다. (${successCount}건)`);
-        } else {
-          alert(`복구가 부분 완료되었습니다. 성공 ${successCount}건 / 실패 ${failedCount}건`);
+        let message = `복구가 완료되었습니다.\n- 성공: ${successCount}건${failedCount > 0 ? ` / 실패: ${failedCount}건` : ''}\n- 복원된 사진·서명: ${restoredPhotoCount}장`;
+        if (filteredCorruptedCount > 0) {
+          message += `\n\n※ 과거 백업 파일에서 손상된 HTML 텍스트 이미지 ${filteredCorruptedCount}건을 감지하여 엑박 방지를 위해 안전하게 정제(제거)했습니다.`;
         }
+        alert(message);
       } catch (err) {
         console.error(err);
         alert('잘못된 백업 파일입니다.');

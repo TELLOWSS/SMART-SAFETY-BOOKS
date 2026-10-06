@@ -102,6 +102,17 @@ const reqToPromise = <T>(request: IDBRequest<T>) =>
     request.onerror = () => reject(request.error || new Error('IndexedDB 요청 실패'));
   });
 
+const cleanseImageValue = (value: unknown): string => {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === 'PLACEHOLDER') return '';
+  if (trimmed.startsWith('data:text/') || trimmed.startsWith('data:application/')) return '';
+  if (trimmed.startsWith('data:image/') || trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('blob:')) {
+    return trimmed;
+  }
+  return '';
+};
+
 const extractImagesFromLog = (logData: any) => {
   if (!logData) return { cleanLog: logData, images: null };
 
@@ -114,26 +125,30 @@ const extractImagesFromLog = (logData: any) => {
 
   const cleanLog = { ...logData };
   
-  if (logData.managerSignature) {
-    if (logData.managerSignature.startsWith('data:')) {
-      images.managerSignature = logData.managerSignature;
+  const safeManagerSig = cleanseImageValue(logData.managerSignature);
+  if (safeManagerSig) {
+    if (safeManagerSig.startsWith('data:image/')) {
+      images.managerSignature = safeManagerSig;
       cleanLog.managerSignature = 'PLACEHOLDER';
-    } else if (logData.managerSignature === 'PLACEHOLDER') {
-      cleanLog.managerSignature = '';
     } else {
-      images.managerSignature = logData.managerSignature;
+      images.managerSignature = safeManagerSig;
+      cleanLog.managerSignature = safeManagerSig;
     }
+  } else {
+    cleanLog.managerSignature = '';
   }
   
-  if (logData.directorSignature) {
-    if (logData.directorSignature.startsWith('data:')) {
-      images.directorSignature = logData.directorSignature;
+  const safeDirectorSig = cleanseImageValue(logData.directorSignature);
+  if (safeDirectorSig) {
+    if (safeDirectorSig.startsWith('data:image/')) {
+      images.directorSignature = safeDirectorSig;
       cleanLog.directorSignature = 'PLACEHOLDER';
-    } else if (logData.directorSignature === 'PLACEHOLDER') {
-      cleanLog.directorSignature = '';
     } else {
-      images.directorSignature = logData.directorSignature;
+      images.directorSignature = safeDirectorSig;
+      cleanLog.directorSignature = safeDirectorSig;
     }
+  } else {
+    cleanLog.directorSignature = '';
   }
 
   // 1. Checklist photos
@@ -142,13 +157,12 @@ const extractImagesFromLog = (logData: any) => {
       const checklist = JSON.parse(logData.checklistData);
       const cleanChecklist: any = {};
       Object.entries(checklist).forEach(([itemId, itemValue]: [string, any]) => {
-        if (itemValue.photoUrl && itemValue.photoUrl.startsWith('data:')) {
-          images.checklistPhotos[itemId] = itemValue.photoUrl;
+        const safePhotoUrl = cleanseImageValue(itemValue.photoUrl);
+        if (safePhotoUrl && safePhotoUrl.startsWith('data:image/')) {
+          images.checklistPhotos[itemId] = safePhotoUrl;
           cleanChecklist[itemId] = { ...itemValue, photoUrl: 'PLACEHOLDER' };
-        } else if (itemValue.photoUrl === 'PLACEHOLDER') {
-          cleanChecklist[itemId] = { ...itemValue, photoUrl: '' };
         } else {
-          cleanChecklist[itemId] = itemValue;
+          cleanChecklist[itemId] = { ...itemValue, photoUrl: safePhotoUrl };
         }
       });
       cleanLog.checklistData = JSON.stringify(cleanChecklist);
@@ -163,13 +177,12 @@ const extractImagesFromLog = (logData: any) => {
       const relatedPhotos = JSON.parse(logData.relatedPhotosData);
       const cleanRelatedPhotos = relatedPhotos.map((photo: any, index: number) => {
         const photoKey = photo.id || String(index);
-        if (photo.imageUrl && photo.imageUrl.startsWith('data:')) {
-          images.relatedPhotos[photoKey] = photo.imageUrl;
+        const safeImageUrl = cleanseImageValue(photo.imageUrl);
+        if (safeImageUrl && safeImageUrl.startsWith('data:image/')) {
+          images.relatedPhotos[photoKey] = safeImageUrl;
           return { ...photo, imageUrl: 'PLACEHOLDER' };
-        } else if (photo.imageUrl === 'PLACEHOLDER') {
-          return { ...photo, imageUrl: '' };
         }
-        return photo;
+        return { ...photo, imageUrl: safeImageUrl };
       });
       cleanLog.relatedPhotosData = JSON.stringify(cleanRelatedPhotos);
     } catch (e) {
@@ -185,10 +198,15 @@ const mergeImagesIntoLog = (cleanLog: any, images: any) => {
 
   const logData = { ...cleanLog };
   if (logData.managerSignature === 'PLACEHOLDER') {
-    logData.managerSignature = images?.managerSignature || '';
+    logData.managerSignature = cleanseImageValue(images?.managerSignature);
+  } else {
+    logData.managerSignature = cleanseImageValue(logData.managerSignature);
   }
+
   if (logData.directorSignature === 'PLACEHOLDER') {
-    logData.directorSignature = images?.directorSignature || '';
+    logData.directorSignature = cleanseImageValue(images?.directorSignature);
+  } else {
+    logData.directorSignature = cleanseImageValue(logData.directorSignature);
   }
 
   // 1. Checklist photos
@@ -197,7 +215,9 @@ const mergeImagesIntoLog = (cleanLog: any, images: any) => {
       const checklist = JSON.parse(logData.checklistData);
       Object.entries(checklist).forEach(([itemId, itemValue]: [string, any]) => {
         if (itemValue.photoUrl === 'PLACEHOLDER') {
-          itemValue.photoUrl = images?.checklistPhotos?.[itemId] || '';
+          itemValue.photoUrl = cleanseImageValue(images?.checklistPhotos?.[itemId]);
+        } else {
+          itemValue.photoUrl = cleanseImageValue(itemValue.photoUrl);
         }
       });
       logData.checklistData = JSON.stringify(checklist);
@@ -213,7 +233,9 @@ const mergeImagesIntoLog = (cleanLog: any, images: any) => {
       relatedPhotos.forEach((photo: any, index: number) => {
         const photoKey = photo.id || String(index);
         if (photo.imageUrl === 'PLACEHOLDER') {
-          photo.imageUrl = images?.relatedPhotos?.[photoKey] || images?.relatedPhotos?.[photo.id] || images?.relatedPhotos?.[String(index)] || '';
+          photo.imageUrl = cleanseImageValue(images?.relatedPhotos?.[photoKey] || images?.relatedPhotos?.[photo.id] || images?.relatedPhotos?.[String(index)]);
+        } else {
+          photo.imageUrl = cleanseImageValue(photo.imageUrl);
         }
       });
       logData.relatedPhotosData = JSON.stringify(relatedPhotos);
