@@ -1,18 +1,23 @@
-import React, { useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import DailyLogPrintView from './DailyLogPrintView';
-import { Printer, ArrowLeft } from 'lucide-react';
+import { Printer, ArrowLeft, Loader2, CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export default function PrintLogs() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const idsParam = searchParams.get('ids');
-  const ids = idsParam ? idsParam.split(',') : [];
+  const ids = idsParam ? idsParam.split(',').map(s => s.trim()).filter(Boolean) : [];
 
-  useEffect(() => {
-    // Optionally auto-print when loaded, but let's give the user control
+  const [loadedMap, setLoadedMap] = useState<Record<string, boolean>>({});
+
+  const handleLoaded = useCallback((logId: string) => {
+    setLoadedMap(prev => ({ ...prev, [logId]: true }));
   }, []);
+
+  const loadedCount = ids.filter(id => loadedMap[id]).length;
+  const isAllLoaded = ids.length > 0 && loadedCount >= ids.length;
 
   return (
     <div className="bg-neutral-100 min-h-screen">
@@ -22,10 +27,22 @@ export default function PrintLogs() {
             <ArrowLeft className="w-5 h-5 mr-1" /> 돌아가기
           </button>
           <div className="flex items-center space-x-4">
-            <span className="text-neutral-600 font-medium">{ids.length}개의 일지 렌더링됨</span>
+            <span className="text-neutral-600 font-medium text-sm flex items-center gap-1.5">
+              {isAllLoaded ? (
+                <>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 inline" />
+                  <span>{ids.length}개 일지 준비 완료</span>
+                </>
+              ) : (
+                <>
+                  <Loader2 className="w-4 h-4 text-blue-600 animate-spin inline" />
+                  <span>{loadedCount} / {ids.length} 로딩 중...</span>
+                </>
+              )}
+            </span>
             <button 
                onClick={() => window.print()}
-               className="inline-flex items-center px-5 py-2 bg-neutral-900 text-white rounded-md font-medium hover:bg-black shadow"
+               className="inline-flex items-center px-5 py-2 bg-neutral-900 text-white rounded-md font-medium hover:bg-black shadow transition-all active:scale-95"
             >
                <Printer className="w-4 h-4 mr-2" />
                PDF 출력
@@ -42,7 +59,7 @@ export default function PrintLogs() {
           ids.map((id, index) => (
              <div key={id} className="bg-white print:bg-transparent p-8 print:p-0 shadow print:shadow-none mx-auto w-full max-w-5xl print:break-after-page">
                 <div className="print:hidden text-center text-sm font-bold text-neutral-400 mb-4 tracking-widest">{index + 1}번째 일지</div>
-                <DailyLogPrintView logId={id} />
+                <DailyLogPrintView logId={id} onLoaded={handleLoaded} />
              </div>
           ))
         ) : (

@@ -29,10 +29,15 @@ export const auth = {
   currentUser: localUser as LocalUser | null,
   onAuthStateChanged(callback: (user: LocalUser | null) => void) {
     authListeners.add(callback);
-    callback(this.currentUser);
-    return () => {
+    const unsubscribe = () => {
       authListeners.delete(callback);
     };
+    try {
+      callback(this.currentUser);
+    } catch (e) {
+      console.error('auth.onAuthStateChanged callback error:', e);
+    }
+    return unsubscribe;
   },
 };
 

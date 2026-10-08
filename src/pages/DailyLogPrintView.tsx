@@ -12,6 +12,7 @@ import { MUST_DO_GUIDELINES, FIVE_PROHIBITIONS, HIGH_RISK_ASSESSMENTS, PTW_INSPE
 
 interface Props {
   logId: string;
+  onLoaded?: (logId: string, success: boolean) => void;
 }
 
 const isSafeImageUrl = (url: unknown): boolean => {
@@ -22,7 +23,23 @@ const isSafeImageUrl = (url: unknown): boolean => {
   return trimmed.startsWith('data:image/') || trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('blob:');
 };
 
-export default function DailyLogPrintView({ logId }: Props) {
+const safeParseJson = <T,>(value: unknown, fallback: T): T => {
+  if (!value) return fallback;
+  if (typeof value === 'object') return value as T;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return fallback;
+    try {
+      return JSON.parse(trimmed);
+    } catch (e) {
+      console.warn('safeParseJson parse error:', e);
+      return fallback;
+    }
+  }
+  return fallback;
+};
+
+export default function DailyLogPrintView({ logId, onLoaded }: Props) {
   const [log, setLog] = useState<DailyLog | null>(null);
   const [checklist, setChecklist] = useState<ChecklistData>({});
   const [relatedPhotos, setRelatedPhotos] = useState<RelatedPhoto[]>([]);
@@ -33,44 +50,60 @@ export default function DailyLogPrintView({ logId }: Props) {
 
   useEffect(() => {
     mountedRef.current = true;
-    let unsubscribeAuth: (() => void) | undefined;
-    const load = async () => {
-      if (!logId) return;
-      // auth 가 아직 초기화되지 않았을 수 있으므로 onAuthStateChanged로 안전하게 대기
-      unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
-        if (!user || !mountedRef.current) return;
-        unsubscribeAuth(); // 한 번만 실행
-        try {
-          const snap = await getDoc(doc(db, 'logs', logId));
-          if (!mountedRef.current) return;
-          if (snap.exists()) {
-            const data = snap.data() as Omit<DailyLog, 'id'>;
-            setLog({ id: snap.id, ...data });
-            if (data.checklistData) setChecklist(JSON.parse(data.checklistData));
-            if (data.relatedPhotosData) setRelatedPhotos(JSON.parse(data.relatedPhotosData));
-            if ((data as any).hiddenSections) setHiddenSections((data as any).hiddenSections);
+    if (!logId) {
+      setLoading(false);
+      onLoaded?.(logId, false);
+      return;
+    }
+
+    const unsubscribe = auth.onAuthStateChanged(async (user) => {
+      if (!mountedRef.current) return;
+      if (!user) {
+        setLoading(false);
+        onLoaded?.(logId, false);
+        return;
+      }
+
+      let success = false;
+      try {
+        const snap = await getDoc(doc(db, 'logs', logId));
+        if (!mountedRef.current) return;
+        if (snap.exists()) {
+          const data = snap.data() as Omit<DailyLog, 'id'>;
+          setLog({ id: snap.id, ...data });
+          if (data.checklistData) {
+            setChecklist(safeParseJson<ChecklistData>(data.checklistData, {}));
           }
-          const uid = user.uid;
-          const riskSnap = await getDoc(doc(db, 'settings', `risk_assessment_${uid}`));
-          if (!mountedRef.current) return;
-          if (riskSnap.exists() && riskSnap.data()?.items) {
-            setHighRiskItems(riskSnap.data()!.items);
+          if (data.relatedPhotosData) {
+            setRelatedPhotos(safeParseJson<RelatedPhoto[]>(data.relatedPhotosData, []));
           }
-        } catch (e) {
-          console.error(e);
-        } finally {
-          if (mountedRef.current) setLoading(false);
+          if ((data as any).hiddenSections) {
+            setHiddenSections((data as any).hiddenSections || {});
+          }
+          success = true;
         }
-      });
-    };
-    load();
+
+        const uid = user.uid;
+        const riskSnap = await getDoc(doc(db, 'settings', `risk_assessment_${uid}`));
+        if (!mountedRef.current) return;
+        if (riskSnap.exists() && riskSnap.data()?.items) {
+          setHighRiskItems(riskSnap.data()!.items);
+        }
+      } catch (e) {
+        console.error('DailyLogPrintView load error:', e);
+      } finally {
+        if (mountedRef.current) {
+          setLoading(false);
+          onLoaded?.(logId, success);
+        }
+      }
+    });
+
     return () => {
       mountedRef.current = false;
-      if (unsubscribeAuth) {
-        unsubscribeAuth();
-      }
+      unsubscribe();
     };
-  }, [logId]);
+  }, [logId, onLoaded]);
 
   if (loading) return <div className="text-center p-8 text-neutral-400">일지 로딩 중...</div>;
   if (!log) return <div className="text-center p-8 text-neutral-400">일지를 찾을 수 없습니다.</div>;
@@ -156,11 +189,12 @@ export default function DailyLogPrintView({ logId }: Props) {
 
               {/* 점검 사진 */}
               <div className="border-r border-black flex items-center justify-center bg-white p-1">
-                {val.photoUrl ? (
+                {isSafeImageUrl(val.photoUrl) ? (
                   <img
                     src={val.photoUrl}
                     alt="점검사진"
                     className="max-w-full max-h-[130px] object-contain"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
                   />
                 ) : (
                   <span className="text-neutral-300 text-xs font-semibold">N/A</span>
